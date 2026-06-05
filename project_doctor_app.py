@@ -45,7 +45,7 @@ def render_sidebar():
                 st.error("未發現可用模型，請確認 API 金鑰是否正確。")
         
         st.markdown("---")
-        st.markdown("### 📋 病患基本生理與病史背景")
+        st.markdown("### 📋 病健基本生理與病史背景")
         
         # 1. 年紀預設 40
         age = st.number_input("年齡", min_value=0, max_value=120, value=40, step=1)
@@ -231,7 +231,12 @@ def main():
                         
                         api_history = []
                         for msg in st.session_state.chat_history[:-1]:
-                            api_history.append({"role": msg["role"], "parts": [msg["content"]]})
+                            # 讀取完整 raw_text 防止引擎多輪對話失憶，同時做空值與去空格優化
+                            text = msg.get("raw_text", msg["content"]) if msg["role"] == "model" else msg["content"]
+                            text = text.strip() if text else ""
+                            if not text:
+                                text = "*(無回應)*"
+                            api_history.append({"role": msg["role"], "parts": [text]})
                         
                         result = engine.process_doctor_turn(
                             api_key=api_key,
