@@ -26,11 +26,12 @@ def render_sidebar():
 
             if st.session_state.available_models:
                 default_idx = 0
+                # 修正模型選擇邏輯，優先選用速度最快的 2.0-flash 或 1.5-flash
                 for i, m in enumerate(st.session_state.available_models):
-                    if "gemini-3.5-flash" in m.lower():
+                    if "gemini-2.0-flash" in m.lower():
                         default_idx = i
                         break
-                    elif "3.5-flash" in m.lower() and default_idx == 0:
+                    elif "gemini-1.5-flash" in m.lower() and default_idx == 0:
                         default_idx = i
                     elif "flash" in m.lower() and default_idx == 0:
                         default_idx = i
@@ -157,7 +158,7 @@ def main():
 
     if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
         if not api_key or not selected_model:
-            st.error("請在側邊欄配置正確的 API 金鑰與運算核心核心後再行輸入。")
+            st.error("請在側邊欄配置正確的 API 金鑰與運算核心後再行輸入。")
         else:
             with col_chat:
                 with st.chat_message("assistant"):
