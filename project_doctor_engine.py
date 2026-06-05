@@ -70,6 +70,10 @@ def process_doctor_turn(api_key, selected_model, system_prompt, history_for_api,
     
     output_text = re.sub(r"【?Step 8[:：].*?】?\n?", "", output_text, flags=re.IGNORECASE).strip()
 
+    # 安全機制：當 LLM 出現隨機不吐出 Step 8 標籤的極端狀況時，填補預設動作，避免產生 InvalidArgument 崩潰
+    if not output_text:
+        output_text = "*(醫師暫默，低頭檢視病歷，持續觀察病患反應)*"
+
     return {
         "internal": clinical_text,
         "output": output_text,
