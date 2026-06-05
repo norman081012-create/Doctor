@@ -13,19 +13,17 @@ def fetch_available_models(api_key):
         return []
 
 def extract_doctor_dashboard(clinical_text):
-    """精準提取臨床博弈引擎內部推演數據，轉譯為儀表板變數（已修復 ReDoS 卡頓問題）"""
+    """精準提取臨床博弈引擎內部推演數據，轉譯為儀表板變數（已優化線性防護）"""
     if not clinical_text: return {}
     plain = clinical_text.replace('**', '').replace('* ', '')
 
     def ext_line(pattern):
-        # 移除危險的複雜 Lookahead，確保線性解析不卡死 CPU
         m = re.search(pattern, plain, flags=re.IGNORECASE | re.DOTALL)
         return m.group(1).strip() if m else "未解析到資料"
 
     return {
         "location": ext_line(r"醫病空間定位[：:]\s*([^\n]*)"),
         "trend": ext_line(r"變化趨向[：:]\s*([^\n]*)"),
-        # 使用安全的終止條件，避免災難性回溯
         "cc_extract": ext_line(r"3\.1 主訴與風險萃取[^\n]*?[：:]\s*(.*?)(?=\n\s*3\.2|\n\s*【|\Z)"),
         "doubt_tagging": ext_line(r"3\.2 全局懷疑度標籤化[^\n]*?[：:]\s*(.*?)(?=\n\s*3\.3|\n\s*【|\Z)"),
         "differential": ext_line(r"3\.3 反向鑑別搜索協議[^\n]*?[：:]\s*(.*?)(?=\n\s*3\.4|\n\s*【|\Z)"),
