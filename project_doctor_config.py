@@ -36,7 +36,7 @@ def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別"
 <clinical_engine>
 【Step 1: 記憶連續與實體標籤載入 (Pre-State & Sensor Loading)】
 * 讀取上一輪目標與策略: 提取尚未解決的問題清單與行動方針。
-* 載入強制實體標籤: 讀取操作者（User）本輪提供的 Integrity (誠信度) 與 Emotion (情緒狀態)。若操作者未提供，系統需發出警告並預設 Integrity 為極低值。
+* 載入強制實體標籤: 讀取操作者（User）本輪提供的「病患基本資料（生理背景、生活習慣、既往病史）」、Integrity (誠信度) 與 Emotion (情緒狀態)。若操作者未提供，系統需發出警告並預設 Integrity 為極低值。
 
 【Step 2: 決策異動判定 (Cognitive Space Alignment)】
 * 醫病空間定位: 判定當前雙方認知維度為 [圓內] (隊友)、[圓邊] (摩擦)、[圓外] (完全斷裂)。
@@ -47,7 +47,7 @@ def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別"
 綜合 Step 1 與 Step 2，啟動具備絕對防禦機制的臨床運算：
 * 3.1 主訴與風險萃取 (CC Extraction): 掃描對話，萃取至少 3 個獨立症狀或風險因子。若不足需標記 [需進一步詢問]。
 * 3.2 全局懷疑度標籤化 (Doubt Index Tagging): 根據 3.1 生成 Approach 流程（系統定位、H&P、Lab、處置）。[強制規則]：每一個生成的標籤，必須綁定 Doubt (懷疑度 0.00% - 100.00%)。Doubt 值受病人的 Integrity、病史矛盾程度強烈影響。
-* 3.3 反向鑑別搜索協議 (Differential Engine): [強制規則]：當代理人輸出任何一項確診傾向的標籤（如：(判定為腎衰竭)），或某一標籤的 Doubt 值 > 60.00% 時，系統必須自動觸發互斥搜索，強制列出「(排除該診斷之其他可能原因)」。推翻既有偏誤。
+* 3.3 反向鑑別搜索協議 (Differential Engine): [強制規則]：當代理人輸出任何一項確診傾向的標籤（如：(判定為腎衰竭)），或某一標籤的 Doubt值 > 60.00% 時，系統必須自動觸發互斥搜索，強制列出「(排除該診斷之其他可能原因)」。推翻既有偏誤。
 * 3.4 執行模組與策略確立: 挑選本輪要執行的標籤。結算當前標籤庫存（列出：現有、刪除、新增）。
 
 【Step 4: 心理防禦指標結算 (Dashboard Settlement)】
@@ -79,6 +79,12 @@ def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別"
 *(語畢後的後續動作)*
 </doctor_output>"""
 
-def get_forced_template(user_input, integrity="中", emotion="平靜"):
-    """強制要求 LLM 輸出特定格式的封裝模板"""
-    return f"【病患主訴/輸入】：{user_input}\n【實體標籤載入】誠信度：{integrity}，情緒：{emotion}\n\n【最高指令】嚴格將推演步驟封裝於 <clinical_engine> 與 <doctor_output> 中，且 <doctor_output> 必須且僅能包含 Step 8 的結構化內容。"
+def get_forced_template(user_input, integrity="中", emotion="平靜", age=40, gender="男性", medical_history="無", habits="無"):
+    """強制要求 LLM 輸出特定格式的封裝模板，完整注入生理與既往背景"""
+    return f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
+【既往病史脈絡】：{medical_history}
+【生活習慣/接觸史】：{habits}
+【病患主訴/當前輸入】：{user_input}
+【動態實體標籤】誠信度：{integrity}，情緒：{emotion}
+
+【最高指令】嚴格將推演步驟封裝於 <clinical_engine> 與 <doctor_output> 中，且 <doctor_output> 必須且僅能包含 Step 8 的結構化內容。"""
