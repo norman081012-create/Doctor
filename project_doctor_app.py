@@ -36,7 +36,7 @@ def render_sidebar():
                         default_idx = i
                 
                 selected_model = st.selectbox(
-                    "🤖 選擇運算核心核心 (Model)", 
+                    "🤖 選擇運算核心 (Model)", 
                     st.session_state.available_models, 
                     index=default_idx
                 )
