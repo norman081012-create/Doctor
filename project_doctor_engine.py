@@ -22,38 +22,22 @@ def extract_doctor_dashboard(clinical_text):
         return m.group(1).strip() if m else "未解析到資料"
 
     return {
-        "location": ext_line(r"醫病空間定位[：:]\s*([^
-]*)"),
-        "trend": ext_line(r"變化趨向[：:]\s*([^
-]*)"),
-        "cc_extract": ext_line(r"3\.1 主訴與風險萃取.*?[：:]\s*(.*?)(?=
-.*?(?:3\.2|【Step 4】|\Z))"),
-        "doubt_tagging": ext_line(r"3\.2 全局懷疑度標籤化.*?[：:]\s*(.*?)(?=
-.*?(?:3\.3|\Z))"),
-        "differential": ext_line(r"3\.3 反向鑑別搜索協議.*?[：:]\s*(.*?)(?=
-.*?(?:3\.4|\Z))"),
-        "modules": ext_line(r"3\.4 執行模組與策略確立.*?[：:]\s*(.*?)(?=
-.*?(?:【Step 4】|\[Step 4\]|\Z))"),
-        "sai": ext_line(r"SAI \(主導權感知.*?[:：]\s*([^
-]*)"),
-        "mf": ext_line(r"MF \(面具疲勞度.*?[:：]\s*([^
-]*)"),
-        "bd": ext_line(r"B-D \(邊界防禦不適感.*?[:：]\s*([^
-]*)"),
-        "true_reflex": ext_line(r"真實反射[：:]\s*([^
-]*)"),
-        "inner_strategy": ext_line(r"內在策略[：:]\s*([^
-]*)"),
-        "disguise": ext_line(r"專業偽裝[：:]\s*([^
-]*)"),
-        "external_strategy": ext_line(r"外顯策略[：:]\s*([^
-]*)"),
-        "fusion": ext_line(r"統合調和[：:]\s*([^
-]*)"),
-        "goal_stock": ext_line(r"紀錄目標庫存[：:]\s*([^
-]*)"),
-        "next_strategy": ext_line(r"制定下輪目標\s*/\s*策略[：:]\s*([^
-]*)")
+        "location": ext_line(r"醫病空間定位[：:]\s*([^\n]*)"),
+        "trend": ext_line(r"變化趨向[：:]\s*([^\n]*)"),
+        "cc_extract": ext_line(r"3\.1 主訴與風險萃取.*?[：:]\s*(.*?)(?=\n.*?(?:3\.2|【Step 4】|\Z))"),
+        "doubt_tagging": ext_line(r"3\.2 全局懷疑度標籤化.*?[：:]\s*(.*?)(?=\n.*?(?:3\.3|\Z))"),
+        "differential": ext_line(r"3\.3 反向鑑別搜索協議.*?[：:]\s*(.*?)(?=\n.*?(?:3\.4|\Z))"),
+        "modules": ext_line(r"3\.4 執行模組與策略確立.*?[：:]\s*(.*?)(?=\n.*?(?:【Step 4】|\[Step 4\]|\Z))"),
+        "sai": ext_line(r"SAI \(主導權感知.*?[:：]\s*([^\n]*)"),
+        "mf": ext_line(r"MF \(面具疲勞度.*?[:：]\s*([^\n]*)"),
+        "bd": ext_line(r"B-D \(邊界防禦不適感.*?[:：]\s*([^\n]*)"),
+        "true_reflex": ext_line(r"真實反射[：:]\s*([^\n]*)"),
+        "inner_strategy": ext_line(r"內在策略[：:]\s*([^\n]*)"),
+        "disguise": ext_line(r"專業偽裝[：:]\s*([^\n]*)"),
+        "external_strategy": ext_line(r"外顯策略[：:]\s*([^\n]*)"),
+        "fusion": ext_line(r"統合調和[：:]\s*([^\n]*)"),
+        "goal_stock": ext_line(r"紀錄目標庫存[：:]\s*([^\n]*)"),
+        "next_strategy": ext_line(r"制定下輪目標\s*/\s*策略[：:]\s*([^\n]*)")
     }
 
 def process_doctor_turn(api_key, selected_model, system_prompt, history_for_api, forced_template_text):
