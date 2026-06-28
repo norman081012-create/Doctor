@@ -3,7 +3,6 @@
 # ==========================================
 import streamlit as st
 
-# 要求使用者手動輸入，預設為空字串
 DEFAULT_API_KEY = ""
 
 MODULES_FOR_UI = {
@@ -76,11 +75,10 @@ def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別"
 (一次最多一個陳述/安慰+問句)
 </doctor_output>"""
 
-def get_forced_template(user_input, integrity="中", emotion="平靜", age=40, gender="男性", medical_history="無", habits="無"):
+def get_forced_template(user_input, age=40, gender="男性", medical_history="無", habits="無"):
     return f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
 【既往病史脈絡】：{medical_history}
 【生活習慣/接觸史】：{habits}
 【病患主訴/當前輸入】：{user_input}
-【動態實體標籤】誠信度：{integrity}，情緒：{emotion}
 
 【最高指令】嚴格將推演步驟封裝於 <clinical_engine> 與 <doctor_output> 中，且 <doctor_output> 必須且僅能包含 Step 5 的結構化內容。"""
