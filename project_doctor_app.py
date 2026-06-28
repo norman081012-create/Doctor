@@ -15,7 +15,6 @@ def setup_page():
 def render_sidebar():
     with st.sidebar:
         st.title("⚙️ 醫病博弈控制台")
-        # API 金鑰改為空值，必須手動輸入
         api_key = st.text_input("🔑 Gemini API 金鑰", value="", type="password", placeholder="請貼上您的 API 金鑰")
         
         selected_model = None
@@ -26,7 +25,6 @@ def render_sidebar():
 
             if st.session_state.available_models:
                 default_idx = 0
-                # 優先抓取 gemini-3.1-pro-preview
                 for i, m in enumerate(st.session_state.available_models):
                     if "gemini-3.1-pro-preview" in m.lower():
                         default_idx = i
@@ -60,7 +58,6 @@ def render_sidebar():
             active_histories.append(history_custom.strip())
         final_history = "、".join(active_histories) if active_histories else "無特殊病史"
         
-        # 取消預設選項，初始為空陣列
         habits_presets = st.multiselect(
             "生活習慣 / 接觸史", 
             ["吸菸史", "飲酒史", "嚼檳榔史"], 
@@ -71,12 +68,13 @@ def render_sidebar():
         chief_complaint = st.text_area("⚠️ 病患主訴 (必填)", value="", placeholder="例：胸悶且陣發性心悸兩天...")
         
         st.markdown("---")
-        st.markdown("### 📡 載入本輪動態實體標籤")
-        client_integrity = st.select_slider("病患誠信度 (Integrity)", options=["極低", "低", "中", "高", "完全透明"], value="中")
-        client_emotion = st.selectbox("病患當前情緒 (Emotion)", ["平靜", "焦慮甩鍋", "強烈質疑", "消極怠工", "極端非理性"])
-        
-        return (api_key, selected_model, client_integrity, client_emotion, 
-                age, gender, final_history, final_habits, chief_complaint)
+        st.markdown("### 📦 醫療診療模組速查庫")
+        category = st.selectbox("選擇模組分類", list(config.MODULES_FOR_UI.keys()))
+        for mod_name, mod_desc in config.MODULES_FOR_UI[category].items():
+            with st.expander(f"🔹 {mod_name}"):
+                st.caption(mod_desc)
+
+        return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
 def render_chat_history():
     st.title("🩺 醫師互動診療室")
@@ -89,8 +87,6 @@ def render_chat_history():
             st.markdown(msg["content"])
 
 def render_dashboard():
-    """右側控制板：上方為 Doubt 排序，下方為可展開的 SOAP 紀錄"""
-    
     st.subheader("🎯 當前可能診斷與鑑別診斷")
     st.caption("*(依照 Step 3 內部引擎推演之 Doubt 懷疑度由高至低排序)*")
     
@@ -103,11 +99,9 @@ def render_dashboard():
     if latest_assistant_msg:
         d = latest_assistant_msg["parsed_dash"]
         
-        # 顯示 Assessment 排序
         st.info(d.get("doubt_assessment", "尚未產生評估"))
         st.divider()
         
-        # 顯示可各自展開的 SOAP
         st.subheader("📋 臨床標準病歷紀錄 (SOAP)")
         
         with st.expander("S (Subjective) - 主觀主訴與現病史"):
@@ -133,8 +127,7 @@ def main():
     if "available_models" not in st.session_state:
         st.session_state.available_models = []
         
-    (api_key, selected_model, integrity, emotion, 
-     age, gender, medical_history, habits, chief_complaint) = render_sidebar()
+    (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
     col_chat, col_dash = st.columns([3, 2])
     
@@ -174,8 +167,6 @@ def main():
                         sys_prompt = config.get_system_prompt()
                         forced_prompt = config.get_forced_template(
                             user_input=last_user_input,
-                            integrity=integrity,
-                            emotion=emotion,
                             age=age,
                             gender=gender,
                             medical_history=medical_history,
