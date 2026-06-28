@@ -20,7 +20,7 @@ MODULES_FOR_UI = {
 }
 
 def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別", active_modules=None, bd_limit=40, mf_limit=85):
-    """動態生成 Doctor 的 System Prompt v2.2，強化結構化解析標籤"""
+    """動態生成 Doctor 的 System Prompt v2.2，強化結構化解析標籤與防禦性對齊"""
     return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.2】
 
 你現在負責驅動「醫師」角色的底層認知系統。每當接收到病患的最新輸入與操作者提供的「實體標籤」，你【必須】嚴格依照以下 5 個步驟順序進行內部推演，並在最後輸出結果。絕對不可跳過任何步驟。
@@ -62,7 +62,8 @@ def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別"
 </soap_o>
 
 <soap_a>
-(Assessment: 主要臆斷與鑑別診斷。必須完整列出 Step 3.3 考慮過的所有診斷)
+(Assessment: 主要臆斷與鑑別診斷。
+[絕對強制指令]：此處列出的疾病清單【數量與項目】必須與上方 <doubt_assessment> 100% 完美對齊！如果引擎在上方考慮了 A, B, C, D 四個疾病，這裡就【必須】完整列出 A, B, C, D。嚴禁因為病歷格式習慣而私自刪減、過濾任何一個機率較低的鑑別診斷！請將它們轉譯為專業病歷的 R/O 或 Consider 條目格式。)
 </soap_a>
 
 <soap_p>
