@@ -17,10 +17,10 @@ def extract_tag_content(tag_name, text):
     return match.group(1).strip() if match else f"未解析到 {tag_name} 內容"
 
 def extract_doctor_dashboard(clinical_text):
-    """精準提取臨床博弈引擎的 Doubt 排序與拆分的 SOAP 紀錄"""
+    """精準提取臨床博弈引擎的時相、Doubt 排序與拆分的 SOAP 紀錄"""
     if not clinical_text: return {}
-
     return {
+        "phase": extract_tag_content("phase", clinical_text),
         "doubt_assessment": extract_tag_content("doubt_assessment", clinical_text),
         "soap_s": extract_tag_content("soap_s", clinical_text),
         "soap_o": extract_tag_content("soap_o", clinical_text),
@@ -32,17 +32,16 @@ def process_doctor_turn(api_key, selected_model, system_prompt, history_for_api,
     genai.configure(api_key=api_key)
     model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=system_prompt)
     chat = model_inst.start_chat(history=history_for_api)
-    
+
     response = chat.send_message(forced_template_text)
     full_text = response.text
-    
+
     clean_text = re.sub(r"^```[a-z]*\n|\n```$", "", full_text, flags=re.MULTILINE)
-    
+
     clinical_text = ""
     output_text = clean_text
-
     out_match = re.search(r"<doctor_output>", clean_text, flags=re.IGNORECASE)
-    
+
     if out_match:
         clinical_text = clean_text[:out_match.start()]
         output_text = clean_text[out_match.end():]
@@ -54,9 +53,8 @@ def process_doctor_turn(api_key, selected_model, system_prompt, history_for_api,
 
     output_text = re.sub(r"</?doctor_output>", "", output_text, flags=re.IGNORECASE).strip()
     clinical_text = re.sub(r"</?clinical_engine>", "", clinical_text, flags=re.IGNORECASE).strip()
-    
-    output_text = re.sub(r"【?Step 5[:：].*?】?\n?", "", output_text, flags=re.IGNORECASE).strip()
 
+    output_text = re.sub(r"【?Step 5[:：].*?】?\n?", "", output_text, flags=re.IGNORECASE).strip()
     if not output_text:
         output_text = "*(醫師暫默，低頭檢視病歷，持續觀察病患反應)*"
 
