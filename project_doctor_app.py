@@ -163,14 +163,24 @@ def main():
                     with st.spinner("臨床博弈引擎深度推演中..."):
                         
                         last_user_input = st.session_state.chat_history[-1]["content"]
-                        
                         sys_prompt = config.get_system_prompt()
+                        
+                        # --- 提取上一輪的 SOAP 紀錄 ---
+                        previous_soap_text = ""
+                        for msg in reversed(st.session_state.chat_history[:-1]):
+                            if msg["role"] == "model" and "parsed_dash" in msg:
+                                d = msg["parsed_dash"]
+                                previous_soap_text = f"S: {d.get('soap_s', '無')}\nO: {d.get('soap_o', '無')}\nA: {d.get('soap_a', '無')}\nP: {d.get('soap_p', '無')}"
+                                break
+                        # --------------------------------
+                        
                         forced_prompt = config.get_forced_template(
                             user_input=last_user_input,
                             age=age,
                             gender=gender,
                             medical_history=medical_history,
-                            habits=habits
+                            habits=habits,
+                            previous_record=previous_soap_text
                         )
                         
                         api_history = []
