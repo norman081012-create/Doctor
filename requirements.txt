@@ -1,3 +1,2 @@
-# requirements.txt
-streamlit==1.32.0  # 或你本地端開發時所使用的特定版本
+streamlit
 google-generativeai
