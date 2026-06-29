@@ -78,29 +78,13 @@ def render_sidebar():
 
 def render_chat_history():
     st.title("🩺 醫師互動診療室")
-    st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.2（臨床時相閘門版）")
+    st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.2")
     st.divider()
     
     for msg in st.session_state.chat_history:
         role = "user" if msg["role"] == "user" else "assistant"
         with st.chat_message(role):
             st.markdown(msg["content"])
-
-def _phase_badge(phase_raw):
-    """將 phase 文字轉為可讀徽章"""
-    if not phase_raw or "未解析" in phase_raw:
-        return None
-    p = phase_raw.upper()
-    label_map = {
-        "P1": ("🟢 Phase 1 — 病史問診", "目前僅蒐集主觀病史，尚未進入理學或檢驗。"),
-        "P2": ("🟡 Phase 2 — 理學檢查", "病史已收斂，進行針對性理學檢查。"),
-        "P3": ("🔴 Phase 3 — 檢驗與影像", "假設已明確，開立針對性 Lab／Image。")
-    }
-    for key, (label, desc) in label_map.items():
-        if key in p:
-            note = phase_raw.strip()
-            return label, desc, note
-    return phase_raw.strip(), "", phase_raw.strip()
 
 def render_dashboard():
     st.subheader("🎯 當前可能診斷與鑑別診斷")
@@ -114,17 +98,7 @@ def render_dashboard():
             
     if latest_assistant_msg:
         d = latest_assistant_msg["parsed_dash"]
-
-        badge = _phase_badge(d.get("phase", ""))
-        if badge:
-            label, desc, note = badge
-            st.markdown(f"#### {label}")
-            if desc:
-                st.caption(desc)
-            if "紅旗" in note or "跳相" in note:
-                st.error(f"⚠️ {note}")
-            st.divider()
-
+        
         st.info(d.get("doubt_assessment", "尚未產生評估"))
         st.divider()
         
@@ -143,7 +117,7 @@ def render_dashboard():
             st.markdown(d.get("soap_p", "無資料"))
             
     else:
-        st.info("💡 尚未產生診斷推演。等待首輪對話後，系統將在此顯示當前時相、Doubt 排序與 SOAP 病歷。")
+        st.info("💡 尚未產生診斷推演。等待首輪對話後，系統將在此顯示 Doubt 排序與 SOAP 病歷。")
 
 def main():
     setup_page()
