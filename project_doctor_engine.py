@@ -57,6 +57,3 @@ def process_doctor_turn(api_key, selected_model, system_prompt, history_for_api,
         "raw_full_text": full_text,
         "parsed_dash": extract_doctor_dashboard(clinical_text)
     }
-
-
-記起來
