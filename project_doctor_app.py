@@ -87,6 +87,17 @@ def render_chat_history():
             st.markdown(msg["content"])
 
 def render_dashboard():
+    # --- 新增階段切換 UI ---
+    st.subheader("📍 當前看診階段")
+    st.session_state.current_stage = st.radio(
+        "切換階段 (由醫師手動推進流程)",
+        ["1. 問診", "2. 理學", "3. 檢驗/檢查"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    st.divider()
+    # -----------------------
+
     st.subheader("🎯 當前可能診斷與鑑別診斷")
     st.caption("*(依照 Step 3 內部引擎推演之 Doubt 懷疑度由高至低排序)*")
     
@@ -126,6 +137,9 @@ def main():
         st.session_state.chat_history = []
     if "available_models" not in st.session_state:
         st.session_state.available_models = []
+    # --- 初始化階段狀態 ---
+    if "current_stage" not in st.session_state:
+        st.session_state.current_stage = "1. 問診"
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -180,7 +194,8 @@ def main():
                             gender=gender,
                             medical_history=medical_history,
                             habits=habits,
-                            previous_record=previous_soap_text
+                            previous_record=previous_soap_text,
+                            current_stage=st.session_state.current_stage # --- 傳遞當前階段 ---
                         )
                         
                         api_history = []
