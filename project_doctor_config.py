@@ -76,7 +76,7 @@ def get_system_prompt(priority_goal="防禦性醫療紀錄與根本原因鑑別"
 (一次最多一個陳述/安慰+問句)
 </doctor_output>"""
 
-def get_forced_template(user_input, age=40, gender="男性", medical_history="無", habits="無", previous_record=None):
+def get_forced_template(user_input, age=40, gender="男性", medical_history="無", habits="無", previous_record=None, current_stage="1. 問診"):
     base_info = f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
 【既往病史脈絡】：{medical_history}
 【生活習慣/接觸史】：{habits}"""
@@ -85,7 +85,18 @@ def get_forced_template(user_input, age=40, gender="男性", medical_history="�
     if previous_record:
         record_info = f"\n\n【前次標準病歷紀錄參考 (SOAP)】\n{previous_record}"
 
+    # --- 新增階段強制指令 ---
+    stage_instruction = ""
+    if current_stage == "1. 問診":
+        stage_instruction = "【當前階段：1. 問診】\n[絕對限制]：目前為純問診階段。請專注於詢問病史、症狀細節。嚴禁在此階段給出任何「理學檢查 (Physical Examination)」或「檢驗結果」，就算醫師要求，也要提醒醫師尚未進入理學階段。"
+    elif current_stage == "2. 理學":
+        stage_instruction = "【當前階段：2. 理學】\n[階段開放]：醫師開始進行視觸叩聽等理學檢查。請根據病患設定，合理給予相對應的理學客觀反饋 (Objective)。暫勿提供進階抽血/影像檢驗結果。"
+    elif current_stage == "3. 檢驗/檢查":
+        stage_instruction = "【當前階段：3. 檢驗/檢查】\n[階段開放]：醫師已安排進階檢驗（如抽血、X光、超音波等）。請根據臨床推演結果，給予具體的檢驗數據或影像報告。"
+
     return f"""{base_info}{record_info}
+
+{stage_instruction}
 
 【病患主訴/當前輸入】：{user_input}
 
