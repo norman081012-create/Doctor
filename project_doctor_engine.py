@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_engine.py
+# project_doctor_engine.py (新增 generate_raw_text)
 # ==========================================
 import re
 import google.generativeai as genai
@@ -12,12 +12,10 @@ def fetch_available_models(api_key):
         return []
 
 def extract_tag_content(tag_name, text):
-    """精準提取特定 XML 標籤內的內容"""
     match = re.search(rf"<{tag_name}>(.*?)</{tag_name}>", text, flags=re.IGNORECASE | re.DOTALL)
     return match.group(1).strip() if match else ""
 
 def extract_doctor_dashboard(clinical_text):
-    """精準提取臨床博弈引擎的模組化結構"""
     if not clinical_text: return {}
     return {
         "clinical_summary": extract_tag_content("clinical_summary", clinical_text),
@@ -29,14 +27,12 @@ def extract_doctor_dashboard(clinical_text):
     }
 
 def parse_doubt_assessment(text):
-    """正則解析鑑別診斷行，完美支援帶有內部括號的診斷（如 MASLD/NASH）"""
     items = []
     if not text: return items
     lines = text.strip().split("\n")
     for line in lines:
         line = line.strip()
         if not line: continue
-        # 利用 (附帶簡短說明：) 作為分割錨點，排除疾病名稱內部的其他括號干擾
         match = re.search(r"-\s*\[(.*?)\]\s*(.*?)(?:\((附帶簡短說明：.*?)\))?$", line)
         if match:
             prob = match.group(1).strip()
@@ -48,10 +44,8 @@ def parse_doubt_assessment(text):
     return items
 
 def process_doctor_turn(api_key, selected_model, system_prompt, forced_template_text):
-    """改採單次結構化運算核心，確保輸出不受對話歷史污染"""
     genai.configure(api_key=api_key)
     model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=system_prompt)
-    
     response = model_inst.generate_content(forced_template_text)
     full_text = response.text
     
@@ -63,3 +57,10 @@ def process_doctor_turn(api_key, selected_model, system_prompt, forced_template_
         "raw_full_text": full_text,
         "parsed_dash": extract_doctor_dashboard(clinical_text)
     }
+
+def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
+    """直接回傳模型生成的純文字結果（用於追加問診等無 XML 標籤需求的場景）"""
+    genai.configure(api_key=api_key)
+    model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=system_prompt)
+    response = model_inst.generate_content(prompt_text)
+    return response.text
