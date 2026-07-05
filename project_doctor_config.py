@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_config.py
+# project_doctor_config.py (新增 followup 模式)
 # ==========================================
 import streamlit as st
 
@@ -20,9 +20,8 @@ MODULES_FOR_UI = {
 }
 
 def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與根本原因鑑別"):
-    """動態生成 Doctor 的 System Prompt v2.7，強制 S 極簡翻譯與 O 指定系統骨架 (僅 Positive findings)"""
     if mode == "diagnosis":
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.7 - 鑑別診斷階段】
+        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 鑑別診斷階段】
 你現在負責驅動「醫師」角色的底層認知系統。請根據病患背景與主訴，進行臨床推演。
 你【必須】將所有推演與分析結果完整封裝在 `<clinical_engine>` 標籤內。此階段請專注於生成臨床摘要與全面性的鑑別診斷，完全不需輸出任何醫病溝通對話。
 
@@ -38,14 +37,20 @@ def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與�
 進行全局懷疑度標籤化。請在 <doubt_assessment> 標籤內輸出所有可能的鑑別診斷，嚴格依照 Doubt 懷疑度值 (0.00% - 100.00%) 由高至低排序。
 [絕對強制格式]：每一個診斷獨立成行，必須嚴格遵循以下格式（包含括號與特定的說明前綴）：
 - [幾% 數字] 疾病名稱 (附帶簡短說明：具體原因與臨床表現對齊分析)
-
-格式範例：
-- [75.00%] Metabolic Dysfunction-Associated Steatotic Liver Disease (MASLD) / NASH (附帶簡短說明：高糖飲食習慣，上腹脹可能為肝腫大，符合疲倦與肝指數偏高表現)
 </doubt_assessment>
 </clinical_engine>"""
 
+    elif mode == "followup":
+        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 追加問診生成】
+你現在負責輔助醫師進行臨床深度問診。
+請根據已知的「臨床摘要 (S+O)」與醫師當前鎖定的「目標鑑別診斷」，生成 3 到 5 個具備高鑑別度、高收益 (High-yield) 的追加問診問題 (History Taking)。
+
+【輸出規範】
+請直接以條列式輸出問題，並在每個問題後方附上一句簡短的括號說明（解釋詢問此問題的鑑別目的）。
+語氣請採用專業但自然的問診口吻。無需使用任何 XML 標籤。"""
+
     else:  # mode == "soap"
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.7 - 病歷生成階段】
+        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 病歷生成階段】
 你現在負責根據已確立的臨床摘要與鑑別診斷排序，為此病患生成符合防禦性醫療規範的結構化標準病歷 (SOAP)。
 你【必須】將病歷記載完整封裝在 `<clinical_engine>` 標籤內，並保持極度精簡專業（強制使用 Bullet points）。
 
@@ -59,7 +64,6 @@ def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與�
 (Objective: 【絕對嚴禁 AI 腦補與幻覺！嚴禁默寫正常 PE 模板！】
 你必須嚴格依照下方的 9 大系統骨架輸出，且【僅寫出 Positive findings (異常體徵或具鑑別價值的關鍵陰性發現)】。
 若該系統未提及或無異常，請直接標示 N/A 或留空。
-
 Vital signs:
 General:
 Consciousness:
@@ -73,9 +77,7 @@ EXTREMITIES:
 </soap_o>
 
 <soap_a>
-(Assessment: 【嚴禁僅列出單調的疾病清單！】你必須採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫。
-範例格式："Generalized fatigue & upper abdominal fullness: suspected MASLD, R/O Type 2 Diabetes Mellitus"
-請確保先前已確立的鑑別診斷清單中所有疾病，皆被精準歸類對應至患者的具體症狀下。)
+(Assessment: 【嚴禁僅列出單調的疾病清單！】你必須採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫。請確保先前已確立的鑑別診斷清單中所有疾病，皆被精準歸類對應至患者的具體症狀下。)
 </soap_a>
 
 <soap_p>
@@ -83,7 +85,7 @@ EXTREMITIES:
 </soap_p>
 </clinical_engine>"""
 
-def get_forced_template(user_input, age=40, gender="男性", medical_history="無", habits="無", current_stage="1. 問診", mode="diagnosis", clinical_summary="", doubt_text=""):
+def get_forced_template(user_input="", age=40, gender="男性", medical_history="無", habits="無", current_stage="1. 問診", mode="diagnosis", clinical_summary="", doubt_text="", target_diagnosis=""):
     base_info = f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
 【既往病史脈絡】：{medical_history}
 【生活習慣/接觸史】：{habits}
@@ -94,7 +96,15 @@ def get_forced_template(user_input, age=40, gender="男性", medical_history="�
 【病患初始主訴/當前輸入】：{user_input}
 
 【最高指令】請嚴格進行臨床推演，並完整輸出 <clinical_summary> 與 <doubt_assessment> 標籤。"""
-    else:
+    elif mode == "followup":
+        return f"""【已確立臨床摘要 (S+O Summary)】：
+{clinical_summary}
+
+【鎖定目標鑑別診斷】：
+{target_diagnosis}
+
+【最高指令】請針對上述鎖定的目標診斷，推演出 3-5 句最關鍵的追加問診以協助排除或確診。"""
+    else: # soap
         return f"""{base_info}
 【已確立臨床摘要 (S+O Summary)】：
 {clinical_summary}
