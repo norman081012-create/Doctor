@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_config.py (新增 followup 模式)
+# project_doctor_config.py
 # ==========================================
 import streamlit as st
 
@@ -43,10 +43,10 @@ def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與�
     elif mode == "followup":
         return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 追加問診生成】
 你現在負責輔助醫師進行臨床深度問診。
-請根據已知的「臨床摘要 (S+O)」與醫師當前鎖定的「目標鑑別診斷」，生成 3 到 5 個具備高鑑別度、高收益 (High-yield) 的追加問診問題 (History Taking)。
+請根據已知的「臨床摘要 (S+O)」與醫師當前鎖定的「目標鑑別診斷」，生成【1 個】最具鑑別度、高收益 (High-yield) 的追加問診問題 (History Taking)。
 
 【輸出規範】
-請直接以條列式輸出問題，並在每個問題後方附上一句簡短的括號說明（解釋詢問此問題的鑑別目的）。
+請直接輸出一句問診，並在後方附上一句簡短的括號說明（解釋詢問此問題的鑑別目的）。
 語氣請採用專業但自然的問診口吻。無需使用任何 XML 標籤。"""
 
     else:  # mode == "soap"
@@ -103,7 +103,7 @@ def get_forced_template(user_input="", age=40, gender="男性", medical_history=
 【鎖定目標鑑別診斷】：
 {target_diagnosis}
 
-【最高指令】請針對上述鎖定的目標診斷，推演出 3-5 句最關鍵的追加問診以協助排除或確診。"""
+【最高指令】請針對上述鎖定的目標診斷，推演出【1 句】最關鍵的追加問診以協助排除或確診。"""
     else: # soap
         return f"""{base_info}
 【已確立臨床摘要 (S+O Summary)】：
