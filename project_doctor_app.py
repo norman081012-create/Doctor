@@ -7,14 +7,14 @@ import project_doctor_engine as engine
 
 def setup_page():
     st.set_page_config(
-        page_title="Doubt-Driven 醫病動態認知博弈控制台", 
+        page_title="Doubt-Driven 臨床認知博弈控制台", 
         layout="wide", 
         initial_sidebar_state="expanded"
     )
 
 def render_sidebar():
     with st.sidebar:
-        st.title("⚙️ 醫病博弈控制台")
+        st.title("⚙️ 臨床博弈控制台")
         api_key = st.text_input("🔑 Gemini API 金鑰", value="", type="password", placeholder="請貼上您的 API 金鑰")
         
         selected_model = None
@@ -41,7 +41,7 @@ def render_sidebar():
                 st.error("未發現可用模型，請確認 API 金鑰是否正確。")
         
         st.markdown("---")
-        st.markdown("### 📋 病患基本生理與病史背景")
+        st.markdown("### 📋 病健基本生理與病史背景")
         
         age = st.number_input("年齡", min_value=0, max_value=120, value=40, step=1)
         gender = st.selectbox("性別", ["男性", "女性", "多元性別"], index=0)
@@ -76,149 +76,151 @@ def render_sidebar():
 
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
-def render_chat_history():
-    st.title("🩺 醫師互動診療室")
-    st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.2")
-    st.divider()
-    
-    for msg in st.session_state.chat_history:
-        role = "user" if msg["role"] == "user" else "assistant"
-        with st.chat_message(role):
-            st.markdown(msg["content"])
-
-def render_dashboard():
-    # --- 新增階段切換 UI ---
-    st.subheader("📍 當前看診階段")
-    st.session_state.current_stage = st.radio(
-        "切換階段 (由醫師手動推進流程)",
-        ["1. 問診", "2. 理學", "3. 檢驗/檢查"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    st.divider()
-    # -----------------------
-
-    st.subheader("🎯 當前可能診斷與鑑別診斷")
-    st.caption("*(依照 Step 3 內部引擎推演之 Doubt 懷疑度由高至低排序)*")
-    
-    latest_assistant_msg = None
-    for msg in reversed(st.session_state.chat_history):
-        if msg["role"] == "model" and "parsed_dash" in msg:
-            latest_assistant_msg = msg
-            break
-            
-    if latest_assistant_msg:
-        d = latest_assistant_msg["parsed_dash"]
-        
-        st.info(d.get("doubt_assessment", "尚未產生評估"))
-        st.divider()
-        
-        st.subheader("📋 臨床標準病歷紀錄 (SOAP)")
-        
-        with st.expander("S (Subjective) - 主觀主訴與現病史"):
-            st.markdown(d.get("soap_s", "無資料"))
-            
-        with st.expander("O (Objective) - 客觀數據與理學檢查"):
-            st.markdown(d.get("soap_o", "無資料"))
-            
-        with st.expander("A (Assessment) - 評估與診斷"):
-            st.markdown(d.get("soap_a", "無資料"))
-            
-        with st.expander("P (Plan) - 處置計畫"):
-            st.markdown(d.get("soap_p", "無資料"))
-            
-    else:
-        st.info("💡 尚未產生診斷推演。等待首輪對話後，系統將在此顯示 Doubt 排序與 SOAP 病歷。")
-
 def main():
     setup_page()
     
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    # 初始化獨立的工作記憶體狀態
+    if "clinical_summary" not in st.session_state:
+        st.session_state.clinical_summary = ""
+    if "doubt_list" not in st.session_state:
+        st.session_state.doubt_list = []
+    if "raw_diagnosis_text" not in st.session_state:
+        st.session_state.raw_diagnosis_text = ""
+    if "soap_record" not in st.session_state:
+        st.session_state.soap_record = {}
     if "available_models" not in st.session_state:
         st.session_state.available_models = []
-    # --- 初始化階段狀態 ---
     if "current_stage" not in st.session_state:
         st.session_state.current_stage = "1. 問診"
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
-    col_chat, col_dash = st.columns([3, 2])
+    # 重新切分中間欄位與右側欄位
+    col_mid, col_right = st.columns([3, 2])
     
-    with col_chat:
-        render_chat_history()
+    # ==========================================
+    # 【中間欄位】Clinical Summary & 鑑別診斷
+    # ==========================================
+    with col_mid:
+        st.title("🩺 臨床推演工作區")
+        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.3")
+        st.divider()
         
-        if len(st.session_state.chat_history) == 0:
-            st.info("💡 請先在左側填寫『病患主訴』與『API 金鑰』後啟動對話。")
-            if st.button("🚀 送出初始主訴並建立病例對話", use_container_width=True):
-                if not api_key:
-                    st.error("❌ 請先輸入 Gemini API 金鑰！")
-                elif not selected_model:
-                    st.error("❌ 無法載入模型，請確認 API 金鑰是否正確。")
-                elif not chief_complaint.strip():
-                    st.error("❌ 主訴為必填欄位！")
-                else:
-                    st.session_state.chat_history.append({"role": "user", "content": chief_complaint.strip()})
+        st.subheader("📋 臨床摘要 (Clinical Summary)")
+        if st.session_state.clinical_summary:
+            st.info(st.session_state.clinical_summary)
+        else:
+            st.caption("💡 尚未生成臨床摘要。請配置左側參數並啟動推演。")
+            
+        st.divider()
+        
+        st.subheader("🎯 鑑別診斷 (Differential Diagnosis)")
+        if st.session_state.doubt_list:
+            for item in st.session_state.doubt_list:
+                # 初始狀態收束，標題僅顯示包含百分比與疾病名稱，點開才顯示內部對齊說明
+                with st.expander(f"[{item['prob']}] {item['title']}", expanded=False):
+                    st.markdown(f"**診斷推演細節**\n\n{item['desc']}")
+        else:
+            st.caption("💡 尚未產生診斷推演。")
+            
+        st.markdown("\n\n")
+        if st.button("🚀 開始臨床推演（生成鑑別診斷）", use_container_width=True, type="primary"):
+            if not api_key:
+                st.error("❌ 請先輸入 Gemini API 金鑰！")
+            elif not selected_model:
+                st.error("❌ 無法載入模型，請確認 API 金鑰是否正確。")
+            elif not chief_complaint.strip():
+                st.error("❌ 主訴為必填欄位！")
+            else:
+                with st.spinner("臨床博弈引擎深度推演（診斷生成中）..."):
+                    sys_prompt = config.get_system_prompt(mode="diagnosis")
+                    forced_prompt = config.get_forced_template(
+                        user_input=chief_complaint.strip(),
+                        age=age,
+                        gender=gender,
+                        medical_history=medical_history,
+                        habits=habits,
+                        current_stage=st.session_state.current_stage,
+                        mode="diagnosis"
+                    )
+                    
+                    result = engine.process_doctor_turn(
+                        api_key=api_key,
+                        selected_model=selected_model,
+                        system_prompt=sys_prompt,
+                        forced_template_text=forced_prompt
+                    )
+                    
+                    dash = result["parsed_dash"]
+                    st.session_state.clinical_summary = dash.get("clinical_summary", "無摘要說明")
+                    st.session_state.raw_diagnosis_text = dash.get("doubt_assessment", "")
+                    st.session_state.doubt_list = engine.parse_doubt_assessment(st.session_state.raw_diagnosis_text)
+                    st.session_state.soap_record = {}  # 重新推演診斷時，重置舊病歷
                     st.rerun()
-        else:
-            if user_input := st.chat_input("請輸入病患進一步的追問、回答或回應..."):
-                st.session_state.chat_history.append({"role": "user", "content": user_input})
-                st.rerun()
 
-    with col_dash:
-        render_dashboard()
-
-    if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
-        if not api_key or not selected_model:
-            st.error("請確認 API 金鑰與模型配置正確。")
-        else:
-            with col_chat:
-                with st.chat_message("assistant"):
-                    with st.spinner("臨床博弈引擎深度推演中..."):
-                        
-                        last_user_input = st.session_state.chat_history[-1]["content"]
-                        sys_prompt = config.get_system_prompt()
-                        
-                        # --- 提取上一輪的 SOAP 紀錄 ---
-                        previous_soap_text = ""
-                        for msg in reversed(st.session_state.chat_history[:-1]):
-                            if msg["role"] == "model" and "parsed_dash" in msg:
-                                d = msg["parsed_dash"]
-                                previous_soap_text = f"S: {d.get('soap_s', '無')}\nO: {d.get('soap_o', '無')}\nA: {d.get('soap_a', '無')}\nP: {d.get('soap_p', '無')}"
-                                break
-                        # --------------------------------
-                        
+    # ==========================================
+    # 【右側欄位】標準病歷工作區
+    # ==========================================
+    with col_right:
+        st.subheader("📍 當前看診階段")
+        st.session_state.current_stage = st.radio(
+            "切換階段 (由醫師手動推進流程)",
+            ["1. 問診", "2. 理學", "3. 檢驗/檢查"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        st.divider()
+        
+        st.subheader("📝 臨床標準病歷紀錄 (SOAP)")
+        
+        if st.session_state.doubt_list:
+            if st.session_state.soap_record:
+                d = st.session_state.soap_record
+                
+                with st.expander("S (Subjective) - 主觀主訴與現病史", expanded=True):
+                    st.markdown(d.get("soap_s", "無資料"))
+                    
+                with st.expander("O (Objective) - 客觀數據與理學檢查", expanded=True):
+                    st.markdown(d.get("soap_o", "無資料"))
+                    
+                with st.expander("A (Assessment) - 評估與診斷 (已100%對齊)", expanded=True):
+                    st.markdown(d.get("soap_a", "無資料"))
+                    
+                with st.expander("P (Plan) - 處置計畫", expanded=True):
+                    st.markdown(d.get("soap_p", "無資料"))
+                    
+                st.markdown("---")
+                if st.button("🔄 重新同步生成病歷", use_container_width=True):
+                    st.session_state.soap_record = {}
+                    st.rerun()
+            else:
+                st.info("💡 鑑別診斷已確立。請點擊下方按鈕以生成完全對齊的防禦性標準病歷。")
+                if st.button("🧬 生成病歷", use_container_width=True, type="primary"):
+                    with st.spinner("正在同步歷史診斷，編織結構化 SOAP 病歷中..."):
+                        sys_prompt = config.get_system_prompt(mode="soap")
                         forced_prompt = config.get_forced_template(
-                            user_input=last_user_input,
+                            user_input=chief_complaint.strip(),
                             age=age,
                             gender=gender,
                             medical_history=medical_history,
                             habits=habits,
-                            previous_record=previous_soap_text,
-                            current_stage=st.session_state.current_stage # --- 傳遞當前階段 ---
+                            current_stage=st.session_state.current_stage,
+                            mode="soap",
+                            clinical_summary=st.session_state.clinical_summary,
+                            doubt_text=st.session_state.raw_diagnosis_text
                         )
-                        
-                        api_history = []
-                        for msg in st.session_state.chat_history[:-1]:
-                            text = msg.get("raw_text", msg["content"]) if msg["role"] == "model" else msg["content"]
-                            text = text.strip() if text else "*(無回應)*"
-                            api_history.append({"role": msg["role"], "parts": [text]})
                         
                         result = engine.process_doctor_turn(
                             api_key=api_key,
                             selected_model=selected_model,
                             system_prompt=sys_prompt,
-                            history_for_api=api_history,
                             forced_template_text=forced_prompt
                         )
                         
-                        st.session_state.chat_history.append({
-                            "role": "model",
-                            "content": result["output"],
-                            "raw_text": result["raw_full_text"],
-                            "parsed_dash": result["parsed_dash"]
-                        })
+                        st.session_state.soap_record = result["parsed_dash"]
                         st.rerun()
+        else:
+            st.info("💡 請先在中央工作區啟動臨床推演生成鑑別診斷。")
 
 if __name__ == "__main__":
     main()
