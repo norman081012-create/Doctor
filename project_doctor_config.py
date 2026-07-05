@@ -20,9 +20,9 @@ MODULES_FOR_UI = {
 }
 
 def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與根本原因鑑別"):
-    """動態生成 Doctor 的 System Prompt v2.5，封印 O 幻覺並重構 A 結構"""
+    """動態生成 Doctor 的 System Prompt v2.7，強制 S 極簡翻譯與 O 指定系統骨架 (僅 Positive findings)"""
     if mode == "diagnosis":
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.5 - 鑑別診斷階段】
+        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.7 - 鑑別診斷階段】
 你現在負責驅動「醫師」角色的底層認知系統。請根據病患背景與主訴，進行臨床推演。
 你【必須】將所有推演與分析結果完整封裝在 `<clinical_engine>` 標籤內。此階段請專注於生成臨床摘要與全面性的鑑別診斷，完全不需輸出任何醫病溝通對話。
 
@@ -45,18 +45,31 @@ def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與�
 </clinical_engine>"""
 
     else:  # mode == "soap"
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.5 - 病歷生成階段】
+        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.7 - 病歷生成階段】
 你現在負責根據已確立的臨床摘要與鑑別診斷排序，為此病患生成符合防禦性醫療規範的結構化標準病歷 (SOAP)。
 你【必須】將病歷記載完整封裝在 `<clinical_engine>` 標籤內，並保持極度精簡專業（強制使用 Bullet points）。
 
 <clinical_engine>
 請完整輸出以下標籤，不得遺漏：
 <soap_s>
-(Subjective: 忠實記錄病患的主觀口語主訴與現病史，極簡條列化)
+(Subjective: 極度簡短！直接將「已確立臨床摘要 (Clinical Summary)」進行英文醫學術語翻譯與條列化即可，不要添加多餘的連綴詞。)
 </soap_s>
 
 <soap_o>
-(Objective: 【絕對嚴禁 AI 腦補與幻覺！】僅記錄對話或病史中「明確提供」的理學檢查 (PE)、生命徵象或過去檢驗數據。若當前階段完全未提供實體 PE 數據，請直接填寫 "Not provided at this stage" 或 "No PE data provided")
+(Objective: 【絕對嚴禁 AI 腦補與幻覺！嚴禁默寫正常 PE 模板！】
+你必須嚴格依照下方的 9 大系統骨架輸出，且【僅寫出 Positive findings (異常體徵或具鑑別價值的關鍵陰性發現)】。
+若該系統未提及或無異常，請直接標示 N/A 或留空。
+
+Vital signs:
+General:
+Consciousness:
+HEENT:
+NECK:
+CHEST:
+HEART:
+ABDOMEN:
+EXTREMITIES:
+)
 </soap_o>
 
 <soap_a>
