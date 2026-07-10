@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_app.py (動態對話與手動中斷結案版)
+# project_doctor_app.py (v2.1 實體標籤與滾動記憶版)
 # ==========================================
 import streamlit as st
 import project_doctor_config as config
@@ -45,185 +45,164 @@ def render_sidebar():
         habits_presets = st.multiselect("生活習慣 / 接觸史", ["吸菸史", "飲酒史", "嚼檳榔史"], default=[])
         final_habits = "、".join(habits_presets) if habits_presets else "無特殊不良嗜好"
         chief_complaint = st.text_area("⚠️ 病患主訴 (必填)", value="", placeholder="例：胸悶且陣發性心悸兩天...")
-        
-        st.markdown("---")
-        st.markdown("### 📦 醫療診療模組速查庫")
-        category = st.selectbox("選擇模組分類", list(config.MODULES_FOR_UI.keys()))
-        for mod_name, mod_desc in config.MODULES_FOR_UI[category].items():
-            with st.expander(f"🔹 {mod_name}"):
-                st.caption(mod_desc)
 
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
+
+def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
+    """封裝引擎推演的共用邏輯"""
+    sys_prompt = config.get_system_prompt(mode="v2_1_engine")
+    
+    # 提取最近 6 條對話作為短期上下文，避免 Token 污染
+    chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-6:]])
+    
+    forced_prompt = config.get_forced_template(
+        age=age, gender=gender, medical_history=medical_history, habits=habits,
+        previous_soap=st.session_state.current_soap_xml,
+        chat_history=chat_context,
+        user_input=user_input,
+        physical_tags=physical_tags
+    )
+    
+    raw_response = engine.generate_raw_text(api_key, selected_model, sys_prompt, forced_prompt)
+    parsed_reply = engine.parse_chat_response(raw_response)
+    
+    # 覆寫並更新滾動記憶
+    if parsed_reply["raw_xml"]:
+        st.session_state.current_soap_xml = parsed_reply["raw_xml"]
+        st.session_state.parsed_dash = parsed_reply["parsed_dash"]
+        
+    return parsed_reply["chat_text"]
 
 def main():
     setup_page()
     
-    # 核心動態對話狀態管理
+    # 狀態管理初始化
     if "initialized" not in st.session_state: st.session_state.initialized = False
     if "interrogation_ended" not in st.session_state: st.session_state.interrogation_ended = False
     if "messages" not in st.session_state: st.session_state.messages = []
-    
-    if "clinical_summary" not in st.session_state: st.session_state.clinical_summary = ""
-    if "doubt_list" not in st.session_state: st.session_state.doubt_list = []
-    if "raw_diagnosis_text" not in st.session_state: st.session_state.raw_diagnosis_text = ""
-    if "soap_record" not in st.session_state: st.session_state.soap_record = {}
-    if "available_models" not in st.session_state: st.session_state.available_models = []
-    if "current_stage" not in st.session_state: st.session_state.current_stage = "1. 問診"
+    if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
+    if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
     col_left, col_right = st.columns([3, 2])
     
     # ==========================================
-    # 【左側欄位】動態問診對話流工作區
+    # 【左側欄位】動態問診與實體標籤空投區
     # ==========================================
     with col_left:
         st.title("🩺 臨床動態問診工作區")
-        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.8 (動態對話系統)")
+        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.1")
         st.divider()
         
         if not st.session_state.initialized:
-            st.info("💡 請於左側配置病患基本背景並填寫**主訴**，隨後點擊下方按鈕啟動認知博弈問診流程。")
-            if st.button("🚀 啟動 Doubt-Driven 動態問診系統", use_container_width=True, type="primary"):
+            st.info("💡 請於左側填寫病患基本背景與**主訴**，隨後啟動初始推演。")
+            if st.button("🚀 啟動 Doubt-Driven 引擎", use_container_width=True, type="primary"):
                 if not api_key or not selected_model or not chief_complaint.strip():
                     st.error("❌ 請確保已輸入 API 金鑰、選擇模型並填寫主訴！")
                 else:
-                    with st.spinner("正在啟動推演核心，進行風險與症狀頻譜展延..."):
-                        # 1. 運行初期診斷模式獲取 Baseline
-                        sys_prompt = config.get_system_prompt(mode="diagnosis")
-                        forced_prompt = config.get_forced_template(
-                            user_input=chief_complaint.strip(),
-                            age=age, gender=gender, medical_history=medical_history, habits=habits,
-                            current_stage=st.session_state.current_stage, mode="diagnosis"
+                    with st.spinner("正在建立認知空間並進行症狀頻譜展延..."):
+                        # 初始化第一回合，user_input 視公主訴
+                        st.session_state.messages.append({"role": "user", "content": f"【主訴】{chief_complaint.strip()}"})
+                        reply_text = run_engine_turn(
+                            api_key, selected_model, age, gender, medical_history, habits,
+                            user_input=chief_complaint.strip(), physical_tags="無 (初診狀態)"
                         )
-                        result = engine.process_doctor_turn(api_key, selected_model, sys_prompt, forced_prompt)
-                        dash = result["parsed_dash"]
-                        st.session_state.clinical_summary = dash.get("clinical_summary", "無摘要說明")
-                        st.session_state.raw_diagnosis_text = dash.get("doubt_assessment", "")
-                        st.session_state.doubt_list = engine.parse_doubt_assessment(st.session_state.raw_diagnosis_text)
-                        
-                        # 2. 注入第一軌對話歷史
-                        st.session_state.messages.append({"role": "user", "content": f"【主訴初始化】{chief_complaint.strip()}"})
-                        
-                        # 3. 引導引擎產生第一句追加高收益問診
-                        sys_prompt_chat = config.get_system_prompt(mode="chat_loop")
-                        chat_context = f"user: 【主訴初始化】{chief_complaint.strip()}"
-                        forced_prompt_chat = config.get_forced_template(
-                            age=age, gender=gender, medical_history=medical_history, habits=habits,
-                            current_stage=st.session_state.current_stage, mode="chat_loop",
-                            clinical_summary=st.session_state.clinical_summary, chat_context=chat_context
-                        )
-                        first_reply = engine.generate_raw_text(api_key, selected_model, sys_prompt_chat, forced_prompt_chat)
-                        parsed_reply = engine.parse_chat_response(first_reply)
-                        
-                        st.session_state.messages.append({"role": "assistant", "content": parsed_reply["chat_text"]})
+                        st.session_state.messages.append({"role": "assistant", "content": reply_text})
                         st.session_state.initialized = True
                         st.rerun()
         else:
-            # 渲染動態對話紀錄
-            for msg in st.session_state.messages:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-            
-            # 判斷是否被醫師中斷結案
             if not st.session_state.interrogation_ended:
-                if prompt := st.chat_input("請在此輸入患者的回覆以推進推演..."):
+                # --- 實體標籤空投區 ---
+                with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
+                    physical_input = st.text_input(
+                        "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
+                        key="physical_input_widget",
+                        placeholder="例：BP 180/100, EKG: ST elevation in V1-V3, Hyperreflexia..."
+                    )
+                    
+                    if st.button("⚡ 強制載入標籤並觸發推演 (無需等候病患回覆)", use_container_width=True):
+                        if physical_input.strip():
+                            st.session_state.messages.append({"role": "system", "content": f"【操作者強制載入實體標籤】：{physical_input.strip()}"})
+                            with st.spinner("載入新實體標籤，觸發反向鑑別與動態閥值更新..."):
+                                reply_text = run_engine_turn(
+                                    api_key, selected_model, age, gender, medical_history, habits,
+                                    user_input="[病患無新發言，系統基於新實體標籤重新評估]", 
+                                    physical_tags=physical_input.strip()
+                                )
+                                st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                                st.rerun()
+                st.divider()
+
+            # --- 渲染歷史對話 ---
+            for msg in st.session_state.messages:
+                if msg["role"] == "system":
+                    st.caption(f"🔧 _{msg['content']}_")
+                else:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+            
+            # --- 病患對話輸入區 ---
+            if not st.session_state.interrogation_ended:
+                # 攔截 st.chat_input，一併將上方的 physical_input 內容送出
+                if prompt := st.chat_input("請在此輸入病患的回覆..."):
+                    current_physical = st.session_state.physical_input_widget if st.session_state.physical_input_widget else "無新數據"
+                    
                     st.session_state.messages.append({"role": "user", "content": prompt})
                     with st.chat_message("user"):
                         st.markdown(prompt)
                         
                     with st.chat_message("assistant"):
-                        with st.spinner("博弈引擎深度推演與全局狀態修正中..."):
-                            chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
-                            sys_prompt_chat = config.get_system_prompt(mode="chat_loop")
-                            forced_prompt_chat = config.get_forced_template(
-                                age=age, gender=gender, medical_history=medical_history, habits=habits,
-                                current_stage=st.session_state.current_stage, mode="chat_loop",
-                                clinical_summary=st.session_state.clinical_summary, chat_context=chat_context
+                        with st.spinner("四維度透視引擎掃描中..."):
+                            reply_text = run_engine_turn(
+                                api_key, selected_model, age, gender, medical_history, habits,
+                                user_input=prompt, 
+                                physical_tags=current_physical
                             )
-                            reply = engine.generate_raw_text(api_key, selected_model, sys_prompt_chat, forced_prompt_chat)
-                            parsed_reply = engine.parse_chat_response(reply)
-                            
-                            st.markdown(parsed_reply["chat_text"])
-                            st.session_state.messages.append({"role": "assistant", "content": parsed_reply["chat_text"]})
-                            
-                            # 靜默更新右側即時狀態監控變數
-                            dash = parsed_reply["parsed_dash"]
-                            if dash.get("clinical_summary"):
-                                st.session_state.clinical_summary = dash["clinical_summary"]
-                            if dash.get("doubt_assessment"):
-                                st.session_state.raw_diagnosis_text = dash["doubt_assessment"]
-                                st.session_state.doubt_list = engine.parse_doubt_assessment(dash["doubt_assessment"])
+                            st.markdown(reply_text)
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text})
                     st.rerun()
             else:
-                st.success("🔒 問診流程已由醫師人為中斷結案。對話功能已鎖定，請檢視右側結構化病歷。")
+                st.success("🔒 診療流程已由醫師人為結案。對話功能已鎖定。")
 
     # ==========================================
-    # 【右側欄位】引擎狀態即時監控與 SOAP 病歷區
+    # 【右側欄位】引擎狀態即時監控 (Rolling SOAP)
     # ==========================================
     with col_right:
-        st.subheader("📍 當前看診階段")
-        st.session_state.current_stage = st.radio(
-            "切換階段 (由醫師手動推進流程)", ["1. 問診", "2. 理學", "3. 檢驗/檢查"],
-            horizontal=True, label_visibility="collapsed"
-        )
+        st.subheader("⚙️ 引擎底層認知狀態 (Live SOAP)")
+        st.caption("即時解析 Step 1~4 的內部推演結果")
         st.divider()
         
-        st.subheader("📋 即時臨床摘要 (Clinical Summary)")
-        if st.session_state.clinical_summary:
-            st.info(st.session_state.clinical_summary)
-        else:
-            st.caption("💡 等待推演啟動...")
+        d = st.session_state.parsed_dash
+        
+        with st.expander("S (Subjective) - 頻譜展延與主訴", expanded=True):
+            st.markdown(d.get("soap_s", "等待推演..."))
+            
+        with st.expander("O (Objective) - 實體標籤與體徵", expanded=True):
+            st.markdown(d.get("soap_o", "等待推演..."))
+            
+        with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
+            st.markdown(d.get("soap_a", "等待推演..."))
+            
+        with st.expander("P (Plan) - 處置與防禦性策略", expanded=True):
+            st.markdown(d.get("soap_p", "等待推演..."))
             
         st.divider()
         
-        st.subheader("🎯 動態鑑別診斷排序 (Real-time DDx)")
-        if st.session_state.doubt_list:
-            for item in st.session_state.doubt_list:
-                with st.expander(f"[{item['prob']}] {item['title']}", expanded=False):
-                    st.markdown(f"**診斷推演細節**\n\n{item['desc']}")
-        else:
-            st.caption("💡 尚未產生診斷推演。")
-            
-        st.divider()
-        
-        # 醫師人為判定中斷控制器
+        # 結案與重置控制器
         if st.session_state.initialized and not st.session_state.interrogation_ended:
-            st.warning("👉 當您觀察上方鑑別診斷列表，認為資訊量已足夠明確時，請點擊下方按鈕結案。")
-            if st.button("🛑 診斷已明確，手動結束問診並生成病歷", type="primary", use_container_width=True):
+            st.warning("👉 當左側對話已明確收斂，請點擊下方按鈕結案。")
+            if st.button("🛑 診斷已明確，鎖定病歷並結束看診", type="primary", use_container_width=True):
                 st.session_state.interrogation_ended = True
                 st.rerun()
                 
-        # 結案後，自動調度 SOAP 生成核心
         if st.session_state.interrogation_ended:
-            st.subheader("📝 臨床標準病歷紀錄 (SOAP)")
-            if not st.session_state.soap_record:
-                with st.spinner("正在同步動態問診歷史，編織結構化 SOAP 防禦性病歷..."):
-                    sys_prompt_soap = config.get_system_prompt(mode="soap")
-                    forced_prompt_soap = config.get_forced_template(
-                        age=age, gender=gender, medical_history=medical_history, habits=habits,
-                        current_stage=st.session_state.current_stage, mode="soap",
-                        clinical_summary=st.session_state.clinical_summary, doubt_text=st.session_state.raw_diagnosis_text
-                    )
-                    result_soap = engine.process_doctor_turn(api_key, selected_model, sys_prompt_soap, forced_prompt_soap)
-                    st.session_state.soap_record = result_soap["parsed_dash"]
-                    st.rerun()
-            
-            d = st.session_state.soap_record
-            with st.expander("S (Subjective) - 已建立對話對齊", expanded=True): st.markdown(d.get("soap_s", "無資料"))
-            with st.expander("O (Objective) - 陽性與高價值陰性體徵", expanded=True): st.markdown(d.get("soap_o", "無資料"))
-            with st.expander("A (Assessment) - 症狀群與 R/O 映射", expanded=True): st.markdown(d.get("soap_a", "無資料"))
-            with st.expander("P (Plan) - 臨床臨床防禦性處置方針", expanded=True): st.markdown(d.get("soap_p", "無資料"))
-            
-            st.markdown("---")
             if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
                 st.session_state.interrogation_ended = False
                 st.session_state.messages = []
-                st.session_state.clinical_summary = ""
-                st.session_state.doubt_list = []
-                st.session_state.raw_diagnosis_text = ""
-                st.session_state.soap_record = {}
+                st.session_state.current_soap_xml = ""
+                st.session_state.parsed_dash = {}
                 st.rerun()
 
 if __name__ == "__main__":
