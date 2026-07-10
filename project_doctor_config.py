@@ -54,12 +54,11 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 Consciousness: clear; E4V5M6
 Conjunctiva: not pale Sclera: not icteric
 HEENT: grossly normal
-Neck: supple; LAP(-); JVE(-); (no hepatojugular reflux)
-RHB; S4(+); S3(-); no murmur
+Neck: supple; LAP(-); JVE(-);
+RHB; no murmur
 BS: clear
 Abdomen: L/S: impalpable; bowel sound: normactive
-L/L: no varices
-no weight gain, IO not available
+L/L: no edema, intact skin 
 </soap_o>
 <soap_a>採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。</soap_a>
 <soap_p>記錄臨床處置、進一步檢查計畫與下一步照護方針，極簡條列化。</soap_p>
