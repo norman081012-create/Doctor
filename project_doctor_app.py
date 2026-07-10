@@ -51,10 +51,9 @@ def render_sidebar():
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
     sys_prompt = config.get_system_prompt(mode="v2_1_engine")
     
-    # 【關鍵修改】：讀取「全部」歷史對話，確保引擎不會遺漏任何對答細節
+    # 讀取「全部」歷史對話
     chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
     
-    # 傳入完整的對話脈絡 (chat_context) 與上一輪的病歷 (previous_soap)
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
         previous_soap=st.session_state.current_soap_xml,
@@ -79,6 +78,8 @@ def main():
     if "messages" not in st.session_state: st.session_state.messages = []
     if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
+    # 新增：用於動態清空實體標籤輸入框的 Key
+    if "pe_key" not in st.session_state: st.session_state.pe_key = 0
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -110,9 +111,10 @@ def main():
         else:
             # --- 實體標籤空投區 (固定於左上) ---
             with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
+                # 使用動態 Key，每次 pe_key 改變，這就會變成一個全新空白的輸入框
                 physical_input = st.text_input(
                     "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
-                    key="physical_input_widget",
+                    key=f"physical_input_widget_{st.session_state.pe_key}",
                     placeholder="例：BP 180/100, EKG: ST elevation in V1-V3..."
                 )
                 
@@ -126,13 +128,16 @@ def main():
                                 physical_tags=physical_input.strip()
                             )
                             st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                            st.session_state.physical_input_widget = ""
+                            
+                            # 觸發清空輸入框：讓 pe_key + 1
+                            st.session_state.pe_key += 1
                             st.rerun()
             st.divider()
 
             # --- 病患對話輸入區 ---
             if prompt := st.chat_input("請在此輸入病患的回覆..."):
-                current_physical = st.session_state.physical_input_widget if st.session_state.physical_input_widget else "無新數據"
+                # 直接讀取上面的 physical_input 變數
+                current_physical = physical_input.strip() if physical_input.strip() else "無新數據"
                 
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.spinner("四維度透視引擎掃描中..."):
@@ -142,6 +147,11 @@ def main():
                         physical_tags=current_physical
                     )
                     st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                
+                # 如果對話時有夾帶實體標籤，送出後也順便清空實體標籤欄位
+                if current_physical != "無新數據":
+                    st.session_state.pe_key += 1
+                
                 st.rerun()
 
             # --- 渲染歷史對話 (越新的在越上方) ---
@@ -177,13 +187,13 @@ def main():
             
         st.divider()
         
-        # 重置按鈕無條件顯示於初始化後
         if st.session_state.initialized:
             if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
                 st.session_state.messages = []
                 st.session_state.current_soap_xml = ""
                 st.session_state.parsed_dash = {}
+                st.session_state.pe_key = 0
                 st.rerun()
 
 if __name__ == "__main__":
