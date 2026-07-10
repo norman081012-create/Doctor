@@ -60,11 +60,10 @@ Consciousness: clear; E4V5M6
 Conjunctiva: not pale Sclera: not icteric
 HEENT: grossly normal
 Neck: supple; LAP(-); JVE(-); (no hepatojugular reflux)
-RHB; S4(+); S3(-); no murmur
+RHB; no murmur
 BS: clear
 Abdomen: L/S: impalpable; bowel sound: normactive
-L/L: no varices
-no weight gain, IO not available
+L/L: no edema, no wound
 </soap_o>
 <soap_a>採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。</soap_a>
 <soap_p>
