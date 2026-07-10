@@ -75,7 +75,6 @@ def main():
     setup_page()
     
     if "initialized" not in st.session_state: st.session_state.initialized = False
-    if "interrogation_ended" not in st.session_state: st.session_state.interrogation_ended = False
     if "messages" not in st.session_state: st.session_state.messages = []
     if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
@@ -108,46 +107,41 @@ def main():
                         st.session_state.initialized = True
                         st.rerun()
         else:
-            if not st.session_state.interrogation_ended:
-                # --- 實體標籤空投區 (固定於左上) ---
-                with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
-                    physical_input = st.text_input(
-                        "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
-                        key="physical_input_widget",
-                        placeholder="例：BP 180/100, EKG: ST elevation in V1-V3..."
-                    )
-                    
-                    if st.button("⚡ 強制載入標籤並觸發推演 (無需等候病患回覆)", use_container_width=True):
-                        if physical_input.strip():
-                            st.session_state.messages.append({"role": "system", "content": f"【操作者強制載入實體標籤】：{physical_input.strip()}"})
-                            with st.spinner("載入新實體標籤，觸發反向鑑別與動態閥值更新..."):
-                                reply_text = run_engine_turn(
-                                    api_key, selected_model, age, gender, medical_history, habits,
-                                    user_input="[病患無新發言，系統基於新實體標籤重新評估]", 
-                                    physical_tags=physical_input.strip()
-                                )
-                                st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                                # 執行完後清空輸入框 (透過清除 session_state 對應 key)
-                                st.session_state.physical_input_widget = ""
-                                st.rerun()
-                st.divider()
+            # --- 實體標籤空投區 (固定於左上) ---
+            with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
+                physical_input = st.text_input(
+                    "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
+                    key="physical_input_widget",
+                    placeholder="例：BP 180/100, EKG: ST elevation in V1-V3..."
+                )
+                
+                if st.button("⚡ 強制載入標籤並觸發推演 (無需等候病患回覆)", use_container_width=True):
+                    if physical_input.strip():
+                        st.session_state.messages.append({"role": "system", "content": f"【操作者強制載入實體標籤】：{physical_input.strip()}"})
+                        with st.spinner("載入新實體標籤，觸發反向鑑別與動態閥值更新..."):
+                            reply_text = run_engine_turn(
+                                api_key, selected_model, age, gender, medical_history, habits,
+                                user_input="[病患無新發言，系統基於新實體標籤重新評估]", 
+                                physical_tags=physical_input.strip()
+                            )
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                            st.session_state.physical_input_widget = ""
+                            st.rerun()
+            st.divider()
 
-            # --- 病患對話輸入區 (放置於渲染對話之前，避免被置頂的歷史訊息推擠到底部) ---
-            if not st.session_state.interrogation_ended:
-                if prompt := st.chat_input("請在此輸入病患的回覆..."):
-                    current_physical = st.session_state.physical_input_widget if st.session_state.physical_input_widget else "無新數據"
-                    
-                    st.session_state.messages.append({"role": "user", "content": prompt})
-                    with st.spinner("四維度透視引擎掃描中..."):
-                        reply_text = run_engine_turn(
-                            api_key, selected_model, age, gender, medical_history, habits,
-                            user_input=prompt, 
-                            physical_tags=current_physical
-                        )
-                        st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                    st.rerun()
-            else:
-                st.success("🔒 診療流程已由醫師人為結案。對話功能已鎖定。")
+            # --- 病患對話輸入區 ---
+            if prompt := st.chat_input("請在此輸入病患的回覆..."):
+                current_physical = st.session_state.physical_input_widget if st.session_state.physical_input_widget else "無新數據"
+                
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.spinner("四維度透視引擎掃描中..."):
+                    reply_text = run_engine_turn(
+                        api_key, selected_model, age, gender, medical_history, habits,
+                        user_input=prompt, 
+                        physical_tags=current_physical
+                    )
+                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                st.rerun()
 
             # --- 渲染歷史對話 (越新的在越上方) ---
             st.markdown("### 💬 對話紀錄")
@@ -182,16 +176,10 @@ def main():
             
         st.divider()
         
-        if st.session_state.initialized and not st.session_state.interrogation_ended:
-            st.warning("👉 當左側對話已明確收斂，請點擊下方按鈕結案。")
-            if st.button("🛑 診斷已明確，鎖定病歷並結束看診", type="primary", use_container_width=True):
-                st.session_state.interrogation_ended = True
-                st.rerun()
-                
-        if st.session_state.interrogation_ended:
+        # 重置按鈕無條件顯示於初始化後
+        if st.session_state.initialized:
             if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
-                st.session_state.interrogation_ended = False
                 st.session_state.messages = []
                 st.session_state.current_soap_xml = ""
                 st.session_state.parsed_dash = {}
