@@ -59,7 +59,7 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 Consciousness: clear; E4V5M6
 Conjunctiva: not pale Sclera: not icteric
 HEENT: grossly normal
-Neck: supple; LAP(-); JVE(-); (no hepatojugular reflux)
+Neck: supple; LAP(-); JVE(-);
 RHB; no murmur
 BS: clear
 Abdomen: L/S: impalpable; bowel sound: normactive
