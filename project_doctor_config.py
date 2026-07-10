@@ -19,9 +19,9 @@ MODULES_FOR_UI = {
     }
 }
 
-def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與根本原因鑑別"):
+def get_system_prompt(mode="diagnosis"):
     if mode == "diagnosis":
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 鑑別診斷階段】
+        return """【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 初始診斷與摘要階段】
 你現在負責驅動「醫師」角色的底層認知系統。請根據病患背景與主訴，進行臨床推演。
 你【必須】將所有推演與分析結果完整封裝在 `<clinical_engine>` 標籤內。此階段請專注於生成臨床摘要與全面性的鑑別診斷，完全不需輸出任何醫病溝通對話。
 
@@ -40,17 +40,30 @@ def get_system_prompt(mode="diagnosis", priority_goal="防禦性醫療紀錄與�
 </doubt_assessment>
 </clinical_engine>"""
 
-    elif mode == "followup":
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 追加問診生成】
-你現在負責輔助醫師進行臨床深度問診。
-請根據已知的「臨床摘要 (S+O)」與醫師當前鎖定的「目標鑑別診斷」，生成【1 個】最具鑑別度、高收益 (High-yield) 的追加問診問題 (History Taking)。
+    elif mode == "chat_loop":
+        return """【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 動態問診對話階段】
+你現在是負責導引臨床問診的資深醫師。請分析當前的整體對話脈絡、病患基本背景與既有推演，向病患提出【1個】最具鑑別度、高收益 (High-yield) 的追加問診問題。
 
-【輸出規範】
-請直接輸出一句問診，並在後方附上一句簡短的括號說明（解釋詢問此問題的鑑別目的）。
-語氣請採用專業但自然的問診口吻。無需使用任何 XML 標籤。"""
+【強制輸出規範】
+1. 回覆的前半段必須是直接對病患說的自然語言問診問題（語氣請採用專業但溫和的診間問診口吻，字數精簡，直擊核心，避免AI感口贅詞）。
+2. 回覆的後半段【必須】緊接輸出最新的內部推演狀態，並用 `<clinical_engine>` 標籤完整封裝。請根據最新的病患回覆，修正並更新臨床摘要與動態鑑別診斷。
+
+輸出格式範例：
+請問您在胸悶發作的時候，這種痛感會不會延伸到肩膀或背部？
+
+<clinical_engine>
+<clinical_summary>
+(整合最新對話後的專業 S+O 摘要)
+</clinical_summary>
+<doubt_assessment>
+(更新後的鑑別診斷排序，格式如下)
+- [85%] 急性心肌梗塞 (附帶簡短說明：持續胸悶伴隨左肩放射痛風險)
+- [40%] 胃食道逆流 (附帶簡短說明：排除典型心因性後需考量之鑑別)
+</doubt_assessment>
+</clinical_engine>"""
 
     else:  # mode == "soap"
-        return f"""【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 病歷生成階段】
+        return """【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.8 - 病歷生成階段】
 你現在負責根據已確立的臨床摘要與鑑別診斷排序，為此病患生成符合防禦性醫療規範的結構化標準病歷 (SOAP)。
 你【必須】將病歷記載完整封裝在 `<clinical_engine>` 標籤內，並保持極度精簡專業（強制使用 Bullet points）。
 
@@ -85,7 +98,7 @@ EXTREMITIES:
 </soap_p>
 </clinical_engine>"""
 
-def get_forced_template(user_input="", age=40, gender="男性", medical_history="無", habits="無", current_stage="1. 問診", mode="diagnosis", clinical_summary="", doubt_text="", target_diagnosis=""):
+def get_forced_template(user_input="", age=40, gender="男性", medical_history="無", habits="無", current_stage="1. 問診", mode="diagnosis", clinical_summary="", doubt_text="", chat_context=""):
     base_info = f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
 【既往病史脈絡】：{medical_history}
 【生活習慣/接觸史】：{habits}
@@ -96,14 +109,15 @@ def get_forced_template(user_input="", age=40, gender="男性", medical_history=
 【病患初始主訴/當前輸入】：{user_input}
 
 【最高指令】請嚴格進行臨床推演，並完整輸出 <clinical_summary> 與 <doubt_assessment> 標籤。"""
-    elif mode == "followup":
-        return f"""【已確立臨床摘要 (S+O Summary)】：
+    elif mode == "chat_loop":
+        return f"""{base_info}
+【已確立臨床摘要 (S+O Summary)】：
 {clinical_summary}
 
-【鎖定目標鑑別診斷】：
-{target_diagnosis}
+【動態問診對話歷史紀錄】：
+{chat_context}
 
-【最高指令】請針對上述鎖定的目標診斷，推演出【1 句】最關鍵的追加問診以協助排除或確診。"""
+【最高指令】請仔細分析病患最後一聲回覆，生成下一句高收益問診，並在 `<clinical_engine>` 內完全更新更新臨床摘要與 `<doubt_assessment>`。"""
     else: # soap
         return f"""{base_info}
 【已確立臨床摘要 (S+O Summary)】：
