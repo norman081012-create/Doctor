@@ -51,19 +51,28 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 <soap_o>
 記錄實體標籤數據與客觀體徵。
 [絕對強制規則]：你必須【預設輸出】以下 PE 模板骨架。
-[動態覆寫權限]：請敏銳掃描「實體標籤輸入 (Sensor Input)」以及「歷史對話脈絡 (Chat History)」。若操作者有明確輸入新體徵，或是【醫師在對話中提及了特定的理學檢查發現】（例如在對話中確認了水腫、聽到喘鳴音等），你必須自動將對應的系統狀態從預設的 Normal 改為 Abnormal，並記錄具體異常。其餘未提及的系統則維持以下預設正常值，嚴禁任意刪減或破壞骨架：
+[動態覆寫權限]：請敏銳掃描「實體標籤輸入 (Sensor Input)」以及「歷史對話脈絡 (Chat History)」。若發生以下兩種情況之一，你必須自動將對應的系統狀態從預設的 Normal 改為 Abnormal，並記錄具體異常：
+1. 操作者透過實體標籤明確輸入新體徵。
+2. 【視診與客觀現實連動】：若病患的主訴或對話中提及了具體肉眼可見的物理徵象(如水腫、皮疹等)，請直接將其視為 Objective finding 並修改對應的 PE 欄位，嚴禁死守預設值！
+其餘未提及的系統則維持以下預設正常值，嚴禁任意刪減或破壞骨架：
 
 Consciousness: clear; E4V5M6
 Conjunctiva: not pale Sclera: not icteric
 HEENT: grossly normal
-Neck: supple; LAP(-); JVE(-);
-RHB; no murmur
+Neck: supple; LAP(-); JVE(-); (no hepatojugular reflux)
+RHB; S4(+); S3(-); no murmur
 BS: clear
 Abdomen: L/S: impalpable; bowel sound: normactive
-L/L: no edema, intact skin 
+L/L: no varices
+no weight gain, IO not available
 </soap_o>
 <soap_a>採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。</soap_a>
-<soap_p>記錄臨床處置、進一步檢查計畫與下一步照護方針，極簡條列化。</soap_p>
+<soap_p>
+記錄臨床處置與下一步計畫，必須嚴格分為以下三個子項目並極簡條列化：
+- Diagnostic Plan (例如預計安排的檢驗、影像或進一步理學檢查)
+- Therapeutic Plan (例如初步用藥、處置或轉診)
+- Educational Plan (例如向病患解釋病情、生活型態建議或注意事項)
+</soap_p>
 </clinical_engine>
 
 【Step 5: 簡短醫師回覆】
