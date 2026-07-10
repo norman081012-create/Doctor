@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_config.py (v2.1 滾動記憶與實體標籤版)
+# project_doctor_config.py
 # ==========================================
 import streamlit as st
 
@@ -47,12 +47,11 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 3.4 執行模組與策略確立: 挑選本輪要執行的標籤。
 
 【Step 4: 詳實標準病歷紀載 (Comprehensive Clinical SOAP Note)】
-[強制規則]：產出嚴謹的標準病歷。嚴禁在病歷中寫出引擎術語（圓內外、Doubt值、透視ABCD等）。
-你必須將 Step 1~3 推演出的「所有症狀頻譜」與「鑑別診斷 (DDx)」無縫融入病歷中。請務必完整輸出以下四個標籤：
-<soap_s>忠實記錄主訴與現病史。</soap_s>
-<soap_o>記錄實體標籤數據與客觀體徵。</soap_o>
-<soap_a>包含主要臆斷與完整鑑別診斷 (DDx)。</soap_a>
-<soap_p>記錄臨床處置與下一步計畫。</soap_p>
+[強制規則]：產出嚴謹且【極度簡寫】的標準病歷。嚴禁寫出引擎術語。你必須將推演出的資訊轉譯為精簡的英文醫學術語與條列式(Bullet points)。請務必完整輸出以下四個標籤：
+<soap_s>極度簡短！直接將資訊進行英文醫學術語翻譯與條列化即可，不要添加多餘的連綴詞。</soap_s>
+<soap_o>嚴格依照 9 大系統骨架輸出 (Vital signs, General, Consciousness, HEENT, NECK, CHEST, HEART, ABDOMEN, EXTREMITIES)，且僅寫出 Positive findings 或具鑑別價值的關鍵陰性發現。若無則標示 N/A。</soap_o>
+<soap_a>採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。</soap_a>
+<soap_p>記錄臨床處置、進一步檢查計畫與下一步照護方針，極簡條列化。</soap_p>
 </clinical_engine>
 
 【Step 5: 簡短醫師回覆】
