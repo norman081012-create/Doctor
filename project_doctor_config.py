@@ -55,10 +55,9 @@ Consciousness: clear; E4V5M6
 Conjunctiva: not pale Sclera: not icteric
 HEENT: grossly normal
 Neck: supple; LAP(-); JVE(-); (no hepatojugular reflux)
-RHB; S4(+); S3(-); no murmur**
+RHB; S4(+); S3(-); no murmur
 BS: clear
-Abdomen: palpable spleen***; L/S: impalpable; bowel sound: normactive
-  no collateral veins***
+Abdomen: L/S: impalpable; bowel sound: normactive
 L/L: no varices
 no weight gain, IO not available
 </soap_o>
