@@ -48,6 +48,19 @@ def render_sidebar():
 
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
+def guardrail_agent(chat_text):
+    """
+    輸出審視 Agent：負責監聽 AI 的回覆內容。
+    一旦發現 AI 企圖執行實體醫療行為 (檢查/抽血/會診)，即觸發結案機制。
+    """
+    # 定義觸發結案的敏感醫療行為關鍵字
+    trigger_keywords = ["抽血", "檢查", "理學檢查", "會診", "檢驗", "X光", "超音波", "電腦斷層", "內視鏡", "轉診"]
+    
+    for kw in trigger_keywords:
+        if kw in chat_text:
+            return True
+    return False
+
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
     sys_prompt = config.get_system_prompt(mode="v2_1_engine")
     
@@ -78,8 +91,10 @@ def main():
     if "messages" not in st.session_state: st.session_state.messages = []
     if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
-    # 新增：用於動態清空實體標籤輸入框的 Key
     if "pe_key" not in st.session_state: st.session_state.pe_key = 0
+    
+    # 新增：用於控制系統是否已被 Guardrail 攔截結案
+    if "interrogation_ended" not in st.session_state: st.session_state.interrogation_ended = False
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -109,50 +124,55 @@ def main():
                         st.session_state.initialized = True
                         st.rerun()
         else:
-            # --- 實體標籤空投區 (固定於左上) ---
-            with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
-                # 使用動態 Key，每次 pe_key 改變，這就會變成一個全新空白的輸入框
-                physical_input = st.text_input(
-                    "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
-                    key=f"physical_input_widget_{st.session_state.pe_key}",
-                    placeholder="例：BP 180/100, EKG: ST elevation in V1-V3..."
-                )
-                
-                if st.button("⚡ 強制載入標籤並觸發推演 (無需等候病患回覆)", use_container_width=True):
-                    if physical_input.strip():
-                        st.session_state.messages.append({"role": "system", "content": f"【操作者強制載入實體標籤】：{physical_input.strip()}"})
-                        with st.spinner("載入新實體標籤，觸發反向鑑別與動態閥值更新..."):
-                            reply_text = run_engine_turn(
-                                api_key, selected_model, age, gender, medical_history, habits,
-                                user_input="[病患無新發言，系統基於新實體標籤重新評估]", 
-                                physical_tags=physical_input.strip()
-                            )
-                            st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                            
-                            # 觸發清空輸入框：讓 pe_key + 1
-                            st.session_state.pe_key += 1
-                            st.rerun()
-            st.divider()
-
-            # --- 病患對話輸入區 ---
-            if prompt := st.chat_input("請在此輸入病患的回覆..."):
-                # 直接讀取上面的 physical_input 變數
-                current_physical = physical_input.strip() if physical_input.strip() else "無新數據"
-                
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.spinner("四維度透視引擎掃描中..."):
-                    reply_text = run_engine_turn(
-                        api_key, selected_model, age, gender, medical_history, habits,
-                        user_input=prompt, 
-                        physical_tags=current_physical
+            if not st.session_state.interrogation_ended:
+                # --- 實體標籤空投區 ---
+                with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
+                    physical_input = st.text_input(
+                        "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
+                        key=f"physical_input_widget_{st.session_state.pe_key}",
+                        placeholder="例：BP 180/100, EKG: ST elevation in V1-V3..."
                     )
-                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                
-                # 如果對話時有夾帶實體標籤，送出後也順便清空實體標籤欄位
-                if current_physical != "無新數據":
-                    st.session_state.pe_key += 1
-                
-                st.rerun()
+                    
+                    if st.button("⚡ 強制載入標籤並觸發推演 (無需等候病患回覆)", use_container_width=True):
+                        if physical_input.strip():
+                            st.session_state.messages.append({"role": "system", "content": f"【操作者強制載入實體標籤】：{physical_input.strip()}"})
+                            with st.spinner("載入新實體標籤，觸發反向鑑別與動態閥值更新..."):
+                                reply_text = run_engine_turn(
+                                    api_key, selected_model, age, gender, medical_history, habits,
+                                    user_input="[病患無新發言，系統基於新實體標籤重新評估]", 
+                                    physical_tags=physical_input.strip()
+                                )
+                                st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                                st.session_state.pe_key += 1
+                                st.rerun()
+                st.divider()
+
+                # --- 病患對話輸入區 ---
+                if prompt := st.chat_input("請在此輸入病患的回覆..."):
+                    current_physical = physical_input.strip() if physical_input.strip() else "無新數據"
+                    
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    with st.spinner("四維度透視引擎掃描中..."):
+                        reply_text = run_engine_turn(
+                            api_key, selected_model, age, gender, medical_history, habits,
+                            user_input=prompt, 
+                            physical_tags=current_physical
+                        )
+                        
+                        # 【Guardrail Agent 介入審查】
+                        if guardrail_agent(reply_text):
+                            reply_text += "\n\n🛑 **AI問診已結束，請攜帶此病歷並等候真人醫師正式問診。**"
+                            st.session_state.interrogation_ended = True
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                    
+                    if current_physical != "無新數據":
+                        st.session_state.pe_key += 1
+                    
+                    st.rerun()
+            else:
+                # 觸發結案後的鎖定狀態
+                st.success("🔒 系統已自動判定問診階段結束。對話功能已鎖定，請檢視右側結構化病歷。")
 
             # --- 渲染歷史對話 (越新的在越上方) ---
             st.markdown("### 💬 對話紀錄")
@@ -190,6 +210,7 @@ def main():
         if st.session_state.initialized:
             if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
+                st.session_state.interrogation_ended = False
                 st.session_state.messages = []
                 st.session_state.current_soap_xml = ""
                 st.session_state.parsed_dash = {}
