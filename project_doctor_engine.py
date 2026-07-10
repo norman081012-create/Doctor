@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_engine.py (新增 generate_raw_text)
+# project_doctor_engine.py
 # ==========================================
 import re
 import google.generativeai as genai
@@ -59,8 +59,24 @@ def process_doctor_turn(api_key, selected_model, system_prompt, forced_template_
     }
 
 def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
-    """直接回傳模型生成的純文字結果（用於追加問診等無 XML 標籤需求的場景）"""
     genai.configure(api_key=api_key)
     model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=system_prompt)
     response = model_inst.generate_content(prompt_text)
     return response.text
+
+def parse_chat_response(full_text):
+    """從包含 XML 的回覆中切分出前端對話文字與後端 XML 狀態"""
+    clean_text = re.sub(r"^```[a-z]*\n|\n```$", "", full_text, flags=re.MULTILINE).strip()
+    
+    # 提取 XML 前面的對話文字
+    chat_text = re.split(r"<clinical_engine>", clean_text, flags=re.IGNORECASE)[0].strip()
+    
+    # 提取標籤內容
+    engine_match = re.search(r"<clinical_engine>(.*?)</clinical_engine>", clean_text, flags=re.IGNORECASE | re.DOTALL)
+    engine_xml = engine_match.group(1).strip() if engine_match else ""
+    
+    return {
+        "chat_text": chat_text,
+        "parsed_dash": extract_doctor_dashboard(engine_xml),
+        "raw_xml": engine_xml
+    }
