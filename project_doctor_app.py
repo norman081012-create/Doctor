@@ -51,9 +51,10 @@ def render_sidebar():
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
     sys_prompt = config.get_system_prompt(mode="v2_1_engine")
     
-    # 提取最近 6 條對話作為短期上下文
-    chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages[-6:]])
+    # 【關鍵修改】：讀取「全部」歷史對話，確保引擎不會遺漏任何對答細節
+    chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
     
+    # 傳入完整的對話脈絡 (chat_context) 與上一輪的病歷 (previous_soap)
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
         previous_soap=st.session_state.current_soap_xml,
