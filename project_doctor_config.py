@@ -70,10 +70,8 @@ Abdomen: L/S: impalpable; bowel sound: normactive
 L/L: no edema, no wound
 </soap_o>
 <soap_a>
-必須採用「前置症狀群 -> 臆斷與鑑別診斷 (suspected / DDX / R/O)」的對應格式撰寫，將臨床發現與推斷嚴格綁定，精簡條列。
-格式範例：`Chest pain, diaphoresis -> suspected ACS`
-[強制結案格式]：若某診斷已觸發 Step 3.5 的轉移協議，必須保留前置症狀群，並嚴格記錄為 `[症狀群] -> suspected [診斷] need further [處置]`。
-結案範例：`Chest pain, diaphoresis -> suspected ACS need further EKG/Trop-I`。
+採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。
+[強制結案格式]：若某診斷已觸發 Step 3.5 的轉移協議，必須嚴格記錄為 `suspected [診斷] need further [處置]`。例如：`suspected ACS need further EKG/Trop-I`。
 </soap_a>
 <soap_p>
 記錄臨床處置與下一步計畫，必須嚴格分為以下三個子項目並極簡條列化：
