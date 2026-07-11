@@ -1,9 +1,6 @@
 # ==========================================
-# project_doctor_config.py
+# project_doctor_config.py (部分更新)
 # ==========================================
-import streamlit as st
-
-DEFAULT_API_KEY = ""
 
 def get_system_prompt(mode="v2_1_engine"):
     return """【System Prompt: Doubt-Driven 醫病動態認知博弈引擎 v2.1】
@@ -20,7 +17,7 @@ Step 5 的「簡短醫師回覆」必須放在標籤之外，作為直接對病�
 系統必須將該口語主訴「向上展延」為【物理徵象頻譜】，強迫列出該口語可能涵蓋的所有次分類體徵。
 
 【Step 1: 記憶連續與實體標籤載入 (Pre-State & Sensor Loading)】
-讀取上一輪目標與策略: 提取尚未解決的問題清單與行動方針。
+讀取上一輪目標與策略: 提取尚未解決的問題清單與行動方針。掃描上一輪病歷中是否有已進入 "need further" 狀態的診斷。
 
 【Step 2: 決策異動判定 (Cognitive Space Alignment)】
 醫病空間定位: 判定當前雙方認知維度為 [圓內] (隊友)、[圓邊] (摩擦)、[圓外] (完全斷裂)。
@@ -45,6 +42,10 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 
 3.4 執行模組與策略確立: 挑選本輪要執行的標籤。
 
+3.5 鑑別診斷狀態轉移協議 (DDx State Transition Protocol) [新增核心機制]:
+當系統決定對當前懷疑度最高的鑑別診斷安排任何理學檢查 (PE)、檢驗 (Lab)、影像 (Imaging) 或治療 (Tx) 時，該診斷於「口語問診階段」即視為【暫時結案 (Pending)】。
+此時系統必須：將問診焦點指針強制跳轉至下一個 Doubt 值最高的未解鑑別診斷。
+
 【Step 4: 詳實標準病歷紀載 (Comprehensive Clinical SOAP Note)】
 [強制規則]：產出嚴謹且【極度簡寫】的標準病歷。嚴禁寫出引擎術語。你必須將推演出的資訊轉譯為精簡的英文醫學術語與條列式(Bullet points)。請務必完整輸出以下四個標籤：
 <soap_s>極度簡短！直接將資訊進行英文醫學術語翻譯與條列化即可，不要添加多餘的連綴詞。</soap_s>
@@ -65,32 +66,18 @@ BS: clear
 Abdomen: L/S: impalpable; bowel sound: normactive
 L/L: no edema, no wound
 </soap_o>
-<soap_a>採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。</soap_a>
+<soap_a>
+採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。
+[強制結案格式]：若某診斷已觸發 Step 3.5 的轉移協議，必須嚴格記錄為 `suspected [診斷] need further [處置]`。例如：`suspected ACS need further EKG/Trop-I`。
+</soap_a>
 <soap_p>
 記錄臨床處置與下一步計畫，必須嚴格分為以下三個子項目並極簡條列化：
-- Diagnostic Plan (例如預計安排的檢驗、影像或進一步理學檢查)
-- Therapeutic Plan (例如初步用藥、處置或轉診)
-- Educational Plan (例如向病患解釋病情、生活型態建議或注意事項)
+- Diagnostic Plan (預計安排的檢驗、影像或進一步理學檢查)
+- Therapeutic Plan (初步用藥、處置或轉診)
+- Educational Plan (向病患解釋病情、生活型態建議或注意事項)
 </soap_p>
 </clinical_engine>
 
 【Step 5: 簡短醫師回覆】
-(根據推演結果與 Plan，產出符合醫師口吻、自然且具引導性的回覆，繼續推進醫病對話。一次最多一個陳述/安慰+問句，嚴禁冗長對答與任何AI感贅詞)"""
-
-def get_forced_template(age, gender, medical_history, habits, previous_soap, chat_history, user_input, physical_tags="無"):
-    return f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
-【既往病史】：{medical_history} / 【接觸史】：{habits}
-
-【前一輪病歷記憶 (Previous SOAP)】：
-{previous_soap if previous_soap else "無 (初診啟動)"}
-
-【歷史對話脈絡 (Chat History)】：
-{chat_history if chat_history else "無"}
-
-【本次操作者實體標籤輸入 (Sensor Input)】：
-{physical_tags}
-
-【病患當前回覆】：
-{user_input}
-
-【最高指令】請嚴格執行 Step 1 到 Step 5，將內部推演與最新 SOAP 更新封裝於 XML，最後給出一句對病患的回覆。"""
+根據推演結果與 Plan 產出自然且具引導性的回覆。
+[強制轉移規則]：若本輪有診斷進入 `suspected ... need further ...` 狀態，你的回覆中【嚴禁】繼續針對該診斷提問。你必須給出一個針對「下一個尚未排除的鑑別診斷」的問句，繼續推進醫病對話。一次最多一個陳述/安慰+問句，嚴禁冗長對答與任何AI感贅詞。"""
