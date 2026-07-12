@@ -21,12 +21,11 @@ def extract_tag_content(tag_name, text):
     return match.group(1).strip() if match else ""
 
 def extract_doctor_dashboard(clinical_text):
-    """從引擎的內部推演區塊提取四個 SOAP 核心標籤"""
+    """從引擎的內部推演區塊提取三個 SAP 核心標籤"""
     if not clinical_text: 
         return {}
     return {
         "soap_s": extract_tag_content("soap_s", clinical_text),
-        "soap_o": extract_tag_content("soap_o", clinical_text),
         "soap_a": extract_tag_content("soap_a", clinical_text),
         "soap_p": extract_tag_content("soap_p", clinical_text)
     }
@@ -68,11 +67,4 @@ def parse_chat_response(full_text):
 # 保留原本的單向推演相容性（如果後續還有單純生成的需求）
 def process_doctor_turn(api_key, selected_model, system_prompt, forced_template_text):
     full_text = generate_raw_text(api_key, selected_model, system_prompt, forced_template_text)
-    clean_text = re.sub(r"^```[a-z]*\n|\n```$", "", full_text, flags=re.MULTILINE)
-    clinical_text = re.sub(r"</?clinical_engine>", "", clean_text, flags=re.IGNORECASE).strip()
-    
-    return {
-        "internal": clinical_text,
-        "raw_full_text": full_text,
-        "parsed_dash": extract_doctor_dashboard(clinical_text)
-    }
+    clean_text = re.sub(r"^```[a-z]*\n|\n
