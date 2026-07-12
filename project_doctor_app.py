@@ -130,24 +130,23 @@ def main():
                         st.markdown(msg["content"])
 
     # ==========================================
-    # 【右側欄位】引擎狀態即時監控 (僅顯示診斷與計畫)
+    # 【右側欄位】引擎狀態即時監控 (Rolling SAP)
     # ==========================================
     with col_right:
-        st.subheader("🎯 當前推演診斷清單")
-        st.caption("引擎內部鎖定的懷疑方向與驗證計畫")
+        st.subheader("⚙️ 引擎底層認知狀態 (Live SAP)")
+        st.caption("即時解析 Step 1~4 的內部推演結果")
         st.divider()
         
         d = st.session_state.parsed_dash
-        diagnoses = d.get("diagnoses", [])
         
-        if not st.session_state.initialized:
-            st.info("等待推演...")
-        elif not diagnoses:
-            st.info("尚無收斂出的診斷資訊")
-        else:
-            for diag in diagnoses:
-                # 使用 Streamlit 的元件渲染清單，視覺上更清晰
-                st.info(f"🔍 **{diag}**")
+        with st.expander("S (Subjective) - 歷史全局統整與主訴", expanded=True):
+            st.markdown(d.get("soap_s", "等待推演..."))
+            
+        with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
+            st.markdown(d.get("soap_a", "等待推演..."))
+            
+        with st.expander("P (Plan) - 處置與防禦性策略", expanded=True):
+            st.markdown(d.get("soap_p", "等待推演..."))
             
         st.divider()
         
