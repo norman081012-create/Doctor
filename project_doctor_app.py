@@ -139,13 +139,13 @@ def main():
         
         d = st.session_state.parsed_dash
         
-        with st.expander("S (Subjective) - 歷史全局統整與主訴", expanded=True):
+        with st.expander("S (Subjective) - 歷史全局統整與主訴 (含 OPQRST)", expanded=True):
             st.markdown(d.get("soap_s", "等待推演..."))
             
         with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
             st.markdown(d.get("soap_a", "等待推演..."))
             
-        with st.expander("P (Plan) - 處置與防禦性策略", expanded=True):
+        with st.expander("P (Plan) - 處置與診斷計畫", expanded=True):
             st.markdown(d.get("soap_p", "等待推演..."))
             
         st.divider()
