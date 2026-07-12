@@ -56,7 +56,11 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 </soap_s>
 <soap_a>
 採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。
-[強制結案格式]：若某診斷已滿足 Step 3.5 的轉移條件，必須嚴格記錄為 `suspected [診斷] need further [處置]`。例如：`suspected ACS need further EKG/Trop-I`。
+[診斷用語強制規範]：基於問診狀態與可能性進行嚴格分類
+1. 【Clinical Diagnosis】：光憑問診即可確定的診斷，直接寫為 `[症狀], [疾病] related`（例如：Cough, URI related）。
+2. 【DDx】：**還沒問診**排查的潛在懷疑清單，列為 `DDx: [診斷]`。
+3. 【Suspected】：**問了覺得「像」**（症狀有符合），但仍需進一步理學/檢驗/檢查確認時使用。若滿足 Step 3.5 轉移條件，嚴格記錄為 `suspected [診斷] need further [處置]`。
+4. 【R/O (Rule Out)】：**問了覺得「不像」**，但考量嚴重性或風險，還必須做理學/檢驗/檢查來排除的診斷，標記為 `r/o [診斷]`。
 </soap_a>
 <soap_p>
 記錄臨床處置與下一步計畫，必須嚴格分為以下三個子項目並極簡條列化：
