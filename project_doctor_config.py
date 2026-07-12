@@ -46,32 +46,17 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 3.4 執行模組與策略確立: 挑選本輪要執行的標籤。
 
 3.5 鑑別診斷狀態轉移協議 (DDx State Transition Protocol) [新增核心機制]:
-當系統決定對當前懷疑度最高的鑑別診斷安排任何理學檢查 (PE)、檢驗 (Lab)、影像 (Imaging) 或治療 (Tx) 時，該診斷於「口語問診階段」即視為【暫時結案 (Pending)】。
-此時系統必須：將問診焦點指針強制跳轉至下一個 Doubt 值最高的未解鑑別診斷。
+[口語問診絕對優先]：即使系統決定對當前懷疑度最高（Top 1）的鑑別診斷安排理學檢查 (PE)、檢驗 (Lab) 或影像 (Imaging)，【嚴禁】直接跳過問診！在將該診斷標記為「暫時結案 (Pending)」前，必須先窮盡與該診斷相關的「主觀症狀 (Review of Systems)」。(例如：懷疑中風準備推 CT 前，必須先透過口語確認是否有單側無力、大舌頭、複視等)。
+[轉移條件]：只有當該診斷的相關「主觀病史」已收集完整，且下一步只能依賴客觀數據 (PE/Lab) 推進時，才能將其記錄為 `suspected [診斷] need further [處置]`，並將問診焦點跳轉至下一個 Doubt 值最高的未解鑑別診斷。
 
-【Step 4: 詳實標準病歷紀載 (Comprehensive Clinical SOAP Note)】
-[強制規則]：產出嚴謹且【極度簡寫】的標準病歷。嚴禁寫出引擎術語。你必須將推演出的資訊轉譯為精簡的英文醫學術語與條列式(Bullet points)。請務必完整輸出以下四個標籤：
-<soap_s>極度簡短！直接將資訊進行英文醫學術語翻譯與條列化即可，不要添加多餘的連綴詞。</soap_s>
-<soap_o>
-記錄實體標籤數據與客觀體徵。
-[絕對強制規則]：你必須【預設輸出】以下 PE 模板骨架。
-[動態覆寫權限]：請敏銳掃描「實體標籤輸入 (Sensor Input)」以及「歷史對話脈絡 (Chat History)」。若發生以下兩種情況之一，你必須自動將對應的系統狀態從預設的 Normal 改為 Abnormal，並記錄具體異常：
-1. 操作者透過實體標籤明確輸入新體徵。
-2. 【視診與客觀現實連動】：若病患的主訴或對話中提及了具體肉眼可見的物理徵象(如水腫、皮疹等)，請直接將其視為 Objective finding 並修改對應的 PE 欄位，嚴禁死守預設值！
-其餘未提及的系統則維持以下預設正常值，嚴禁任意刪減或破壞骨架：
-
-Consciousness: clear; E4V5M6
-Conjunctiva: not pale Sclera: not icteric
-HEENT: grossly normal
-Neck: supple; LAP(-); JVE(-);
-RHB; no murmur
-BS: clear
-Abdomen: L/S: impalpable; bowel sound: normactive
-L/L: no edema, no wound
-</soap_o>
+【Step 4: 詳實標準病歷紀載 (Comprehensive Clinical SAP Note)】
+[強制規則]：產出嚴謹且【極度簡寫】的標準病歷。嚴禁寫出引擎術語。你必須將推演出的資訊轉譯為精簡的英文醫學術語與條列式(Bullet points)。請務必完整輸出以下三個標籤：
+<soap_s>
+極度簡短！必須掃描並統整「所有」歷史對話脈絡 (Chat History)，絕對不可遺漏先前的資訊。直接將全局累積的主訴與問診資訊進行英文醫學術語翻譯與條列化，不要添加多餘的連綴詞。
+</soap_s>
 <soap_a>
 採用「症狀群：臆斷與鑑別診斷 (suspected / DDX / R/O)」的映射格式撰寫，精簡條列。
-[強制結案格式]：若某診斷已觸發 Step 3.5 的轉移協議，必須嚴格記錄為 `suspected [診斷] need further [處置]`。例如：`suspected ACS need further EKG/Trop-I`。
+[強制結案格式]：若某診斷已滿足 Step 3.5 的轉移條件，必須嚴格記錄為 `suspected [診斷] need further [處置]`。例如：`suspected ACS need further EKG/Trop-I`。
 </soap_a>
 <soap_p>
 記錄臨床處置與下一步計畫，必須嚴格分為以下三個子項目並極簡條列化：
@@ -83,7 +68,8 @@ L/L: no edema, no wound
 
 【Step 5: 簡短醫師回覆】
 根據推演結果與 Plan 產出自然且具引導性的回覆。
-[強制轉移規則]：若本輪有診斷進入 `suspected ... need further ...` 狀態，你的回覆中【嚴禁】繼續針對該診斷提問。你必須給出一個針對「下一個尚未排除的鑑別診斷」的問句，繼續推進醫病對話。一次最多一個陳述/安慰+問句，嚴禁冗長對答與任何AI感贅詞。"""
+[單一焦點規則]：一次【絕對只能有一個問號】，嚴禁將多個排查問題（例如發燒與藥物史）塞在同一句話中！
+[強制轉移規則]：若本輪有診斷已進入 `suspected ... need further ...` 狀態，你的回覆中【嚴禁】繼續針對該診斷提問。你必須給出一個針對「下一個尚未排除的鑑別診斷」的單一問句，繼續推進醫病對話。嚴禁冗長對答與任何AI感贅詞。"""
 
 def get_forced_template(age, gender, medical_history, habits, previous_soap, chat_history, user_input, physical_tags="無"):
     return f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
@@ -101,4 +87,4 @@ def get_forced_template(age, gender, medical_history, habits, previous_soap, cha
 【病患當前回覆】：
 {user_input}
 
-【最高指令】請嚴格執行 Step 1 到 Step 5，將內部推演與最新 SOAP 更新封裝於 XML，最後給出一句對病患的回覆。"""
+【最高指令】請嚴格執行 Step 1 到 Step 5，將內部推演與最新 SAP 更新封裝於 XML，最後給出一句對病患的回覆。"""
