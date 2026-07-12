@@ -67,4 +67,11 @@ def parse_chat_response(full_text):
 # 保留原本的單向推演相容性（如果後續還有單純生成的需求）
 def process_doctor_turn(api_key, selected_model, system_prompt, forced_template_text):
     full_text = generate_raw_text(api_key, selected_model, system_prompt, forced_template_text)
-    clean_text = re.sub(r"^```[a-z]*\n|\n
+    clean_text = re.sub(r"^```[a-z]*\n|\n```$", "", full_text, flags=re.MULTILINE)
+    clinical_text = re.sub(r"</?clinical_engine>", "", clean_text, flags=re.IGNORECASE).strip()
+    
+    return {
+        "internal": clinical_text,
+        "raw_full_text": full_text,
+        "parsed_dash": extract_doctor_dashboard(clinical_text)
+    }
