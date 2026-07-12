@@ -164,20 +164,17 @@ def main():
                         st.markdown(msg["content"])
 
     # ==========================================
-    # 【右側欄位】引擎狀態即時監控 (Rolling SOAP)
+    # 【右側欄位】引擎狀態即時監控 (Rolling SAP)
     # ==========================================
     with col_right:
-        st.subheader("⚙️ 引擎底層認知狀態 (Live SOAP)")
+        st.subheader("⚙️ 引擎底層認知狀態 (Live SAP)")
         st.caption("即時解析 Step 1~4 的內部推演結果")
         st.divider()
         
         d = st.session_state.parsed_dash
         
-        with st.expander("S (Subjective) - 頻譜展延與主訴", expanded=True):
+        with st.expander("S (Subjective) - 歷史全局統整與主訴", expanded=True):
             st.markdown(d.get("soap_s", "等待推演..."))
-            
-        with st.expander("O (Objective) - 實體標籤與體徵", expanded=True):
-            st.markdown(d.get("soap_o", "等待推演..."))
             
         with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
             st.markdown(d.get("soap_a", "等待推演..."))
