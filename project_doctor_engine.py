@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_engine.py (v2.1 完整支援版 + 速率限制防護)
+# project_doctor_engine.py (v2.5)
 # ==========================================
 import re
 import time
@@ -23,13 +23,12 @@ def extract_tag_content(tag_name, text):
     return match.group(1).strip() if match else ""
 
 def extract_doctor_dashboard(clinical_text):
-    """從引擎的內部推演區塊提取三個 SAP 核心標籤"""
+    """從引擎的內部推演區塊提取 Phase 狀態與完整紀錄"""
     if not clinical_text: 
         return {}
     return {
-        "soap_s": extract_tag_content("soap_s", clinical_text),
-        "soap_a": extract_tag_content("soap_a", clinical_text),
-        "soap_p": extract_tag_content("soap_p", clinical_text)
+        "current_phase": extract_tag_content("current_phase", clinical_text),
+        "full_internal": clinical_text
     }
 
 def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
@@ -56,7 +55,7 @@ def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
 def parse_chat_response(full_text):
     """
     精準分離前端對話文字與後端 XML 狀態。
-    將 <clinical_engine> 內部的推演與外部的 Step 5 (對話) 切開。
+    將 <clinical_engine> 內部的推演與外部的 Step 3 (對話) 切開。
     """
     # 移除可能的 markdown 程式碼區塊標記
     clean_text = re.sub(r"^```[a-z]*\n|\n```$", "", full_text, flags=re.MULTILINE).strip()
@@ -78,16 +77,4 @@ def parse_chat_response(full_text):
         "parsed_dash": extract_doctor_dashboard(engine_xml),
         # 保存這輪完整的 XML 內容，準備當作下一輪的 previous_soap 送回 Prompt
         "raw_xml": f"<clinical_engine>\n{engine_xml}\n</clinical_engine>" if engine_xml else ""
-    }
-
-# 保留原本的單向推演相容性（如果後續還有單純生成的需求）
-def process_doctor_turn(api_key, selected_model, system_prompt, forced_template_text):
-    full_text = generate_raw_text(api_key, selected_model, system_prompt, forced_template_text)
-    clean_text = re.sub(r"^```[a-z]*\n|\n```$", "", full_text, flags=re.MULTILINE)
-    clinical_text = re.sub(r"</?clinical_engine>", "", clean_text, flags=re.IGNORECASE).strip()
-    
-    return {
-        "internal": clinical_text,
-        "raw_full_text": full_text,
-        "parsed_dash": extract_doctor_dashboard(clinical_text)
     }
