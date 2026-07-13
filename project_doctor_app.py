@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_app.py (v2.5 修正介面顯示)
+# project_doctor_app.py
 # ==========================================
 import streamlit as st
 import project_doctor_config as config
@@ -49,15 +49,14 @@ def render_sidebar():
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
-    sys_prompt = config.get_system_prompt(mode="v2_5_engine")
+    sys_prompt = config.get_system_prompt(mode="v2_1_engine")
     
+    # 讀取「全部」歷史對話
     chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
     
     forced_prompt = config.get_forced_template(
-        age=age, 
-        gender=gender, 
-        medical_history=medical_history, 
-        habits=habits,
+        age=age, gender=gender, medical_history=medical_history, habits=habits,
+        previous_soap=st.session_state.current_soap_xml,
         chat_history=chat_context,
         user_input=user_input,
         physical_tags=physical_tags
@@ -66,8 +65,9 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     raw_response = engine.generate_raw_text(api_key, selected_model, sys_prompt, forced_prompt)
     parsed_reply = engine.parse_chat_response(raw_response)
     
-    if "engine_status" in parsed_reply:
-        st.session_state.engine_status = parsed_reply["engine_status"]
+    if parsed_reply["raw_xml"]:
+        st.session_state.current_soap_xml = parsed_reply["raw_xml"]
+        st.session_state.parsed_dash = parsed_reply["parsed_dash"]
         
     return parsed_reply["chat_text"]
 
@@ -76,15 +76,21 @@ def main():
     
     if "initialized" not in st.session_state: st.session_state.initialized = False
     if "messages" not in st.session_state: st.session_state.messages = []
-    if "engine_status" not in st.session_state: st.session_state.engine_status = {}
+    if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
+    if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
+    # 新增：用於動態清空實體標籤輸入框的 Key
+    if "pe_key" not in st.session_state: st.session_state.pe_key = 0
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
-    col_left, col_right = st.columns([3, 1])
+    col_left, col_right = st.columns([3, 2])
     
+    # ==========================================
+    # 【左側欄位】動態問診與實體標籤空投區
+    # ==========================================
     with col_left:
         st.title("🩺 臨床動態問診工作區")
-        st.caption("基於 Doubt-Driven 五階段問診引擎 v2.5")
+        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.1")
         st.divider()
         
         if not st.session_state.initialized:
@@ -93,7 +99,7 @@ def main():
                 if not api_key or not selected_model or not chief_complaint.strip():
                     st.error("❌ 請確保已輸入 API 金鑰、選擇模型並填寫主訴！")
                 else:
-                    with st.spinner("引擎啟動中，進行症狀頻譜展延..."):
+                    with st.spinner("正在建立認知空間並進行症狀頻譜展延..."):
                         st.session_state.messages.append({"role": "user", "content": f"【主訴】{chief_complaint.strip()}"})
                         reply_text = run_engine_turn(
                             api_key, selected_model, age, gender, medical_history, habits,
@@ -103,50 +109,88 @@ def main():
                         st.session_state.initialized = True
                         st.rerun()
         else:
+            # --- 實體標籤空投區 (固定於左上) ---
+            with st.expander("💉 實體標籤空投區 (Objective Findings)", expanded=True):
+                # 使用動態 Key，每次 pe_key 改變，這就會變成一個全新空白的輸入框
+                physical_input = st.text_input(
+                    "輸入理學檢查 (PE) 或檢驗數據 (Lab)", 
+                    key=f"physical_input_widget_{st.session_state.pe_key}",
+                    placeholder="例：BP 180/100, EKG: ST elevation in V1-V3..."
+                )
+                
+                if st.button("⚡ 強制載入標籤並觸發推演 (無需等候病患回覆)", use_container_width=True):
+                    if physical_input.strip():
+                        st.session_state.messages.append({"role": "system", "content": f"【操作者強制載入實體標籤】：{physical_input.strip()}"})
+                        with st.spinner("載入新實體標籤，觸發反向鑑別與動態閥值更新..."):
+                            reply_text = run_engine_turn(
+                                api_key, selected_model, age, gender, medical_history, habits,
+                                user_input="[病患無新發言，系統基於新實體標籤重新評估]", 
+                                physical_tags=physical_input.strip()
+                            )
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                            
+                            # 觸發清空輸入框：讓 pe_key + 1
+                            st.session_state.pe_key += 1
+                            st.rerun()
+            st.divider()
+
+            # --- 病患對話輸入區 ---
             if prompt := st.chat_input("請在此輸入病患的回覆..."):
+                # 直接讀取上面的 physical_input 變數
+                current_physical = physical_input.strip() if physical_input.strip() else "無新數據"
+                
                 st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.spinner("底層決策博弈推演中..."):
+                with st.spinner("四維度透視引擎掃描中..."):
                     reply_text = run_engine_turn(
                         api_key, selected_model, age, gender, medical_history, habits,
                         user_input=prompt, 
-                        physical_tags="無新數據"
+                        physical_tags=current_physical
                     )
                     st.session_state.messages.append({"role": "assistant", "content": reply_text})
                 
+                # 如果對話時有夾帶實體標籤，送出後也順便清空實體標籤欄位
+                if current_physical != "無新數據":
+                    st.session_state.pe_key += 1
+                
                 st.rerun()
 
+            # --- 渲染歷史對話 (越新的在越上方) ---
             st.markdown("### 💬 對話紀錄")
-            for msg in st.session_state.messages:
+            for msg in reversed(st.session_state.messages):
                 if msg["role"] == "system":
                     st.caption(f"🔧 _{msg['content']}_")
                 else:
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
 
+    # ==========================================
+    # 【右側欄位】引擎狀態即時監控 (Rolling SAP)
+    # ==========================================
     with col_right:
-        st.subheader("⚙️ 引擎狀態")
-        st.caption("即時顯示五段式問診進度")
+        st.subheader("⚙️ 引擎底層認知狀態 (Live SAP)")
+        st.caption("即時解析 Step 1~4 的內部推演結果")
+        st.divider()
+        
+        d = st.session_state.parsed_dash
+        
+        with st.expander("S (Subjective) - 歷史全局統整與主訴", expanded=True):
+            st.markdown(d.get("soap_s", "等待推演..."))
+            
+        with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
+            st.markdown(d.get("soap_a", "等待推演..."))
+            
+        with st.expander("P (Plan) - 處置與防禦性策略", expanded=True):
+            st.markdown(d.get("soap_p", "等待推演..."))
+            
         st.divider()
         
         if st.session_state.initialized:
-            e_status = st.session_state.engine_status
-            current_phase = e_status.get("current_phase", "等待推演...")
-            
-            # 刪除 OPQRST 顯示，只顯示 Phase
-            if "Phase 0" in current_phase:
-                st.error(f"🚨 **{current_phase}**")
-            elif "Phase 3" in current_phase:
-                st.warning(f"🎯 **{current_phase}**")
-            else:
-                st.info(f"🔎 **{current_phase}**")
-            
-        st.divider()
-        
-        if st.session_state.initialized:
-            if st.button("🔄 重置病患狀態", use_container_width=True):
+            if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
                 st.session_state.messages = []
-                st.session_state.engine_status = {}
+                st.session_state.current_soap_xml = ""
+                st.session_state.parsed_dash = {}
+                st.session_state.pe_key = 0
                 st.rerun()
 
 if __name__ == "__main__":
