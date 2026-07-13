@@ -59,10 +59,8 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性」列為首要懷�
 [強制結案格式]：若某診斷已滿足 Step 3.5 的轉移條件，必須嚴格記錄為 `suspected [診斷] need further [處置]`。例如：`suspected ACS need further EKG/Trop-I`。
 </soap_a>
 <soap_p>
-記錄臨床處置與下一步計畫，必須嚴格分為以下三個子項目並極簡條列化：
+記錄臨床處置與下一步計畫，極簡條列化：
 - Diagnostic Plan (例如預計安排的檢驗、影像或進一步理學檢查)
-- Therapeutic Plan (例如初步用藥、處置或轉診)
-- Educational Plan (例如向病患解釋病情、生活型態建議或注意事項)
 </soap_p>
 </clinical_engine>
 
