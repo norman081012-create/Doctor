@@ -1,8 +1,10 @@
 # ==========================================
-# project_doctor_engine.py (v2.1 完整支援版)
+# project_doctor_engine.py (v2.1 完整支援版 + 速率限制防護)
 # ==========================================
 import re
+import time
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 
 def fetch_available_models(api_key):
     try:
@@ -31,11 +33,25 @@ def extract_doctor_dashboard(clinical_text):
     }
 
 def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
-    """底層 API 呼叫，回傳純文字結果"""
+    """底層 API 呼叫，回傳純文字結果（包含 ResourceExhausted 自動重試機制）"""
     genai.configure(api_key=api_key)
     model_inst = genai.GenerativeModel(model_name=selected_model, system_instruction=system_prompt)
-    response = model_inst.generate_content(prompt_text)
-    return response.text
+    
+    max_retries = 3
+    base_wait_time = 5  # 基礎等待秒數
+    
+    for attempt in range(max_retries):
+        try:
+            response = model_inst.generate_content(prompt_text)
+            return response.text
+        except ResourceExhausted as e:
+            if attempt < max_retries - 1:
+                sleep_time = base_wait_time * (2 ** attempt)
+                print(f"達到 API 速率限制 (ResourceExhausted)，將於 {sleep_time} 秒後重試... (第 {attempt + 1}/{max_retries} 次)")
+                time.sleep(sleep_time)
+            else:
+                # 若重試三次仍失敗，則將錯誤拋出給 Streamlit
+                raise e
 
 def parse_chat_response(full_text):
     """
