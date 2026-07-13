@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_app.py
+# project_doctor_app.py (v2.5)
 # ==========================================
 import streamlit as st
 import project_doctor_config as config
@@ -49,7 +49,7 @@ def render_sidebar():
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
-    sys_prompt = config.get_system_prompt(mode="v2_1_engine")
+    sys_prompt = config.get_system_prompt(mode="v2_5_engine")
     
     # 讀取「全部」歷史對話
     chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
@@ -88,7 +88,7 @@ def main():
     # ==========================================
     with col_left:
         st.title("🩺 臨床動態問診工作區")
-        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.1")
+        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.5")
         st.divider()
         
         if not st.session_state.initialized:
@@ -120,7 +120,7 @@ def main():
                 
                 st.rerun()
 
-            # --- 渲染歷史對話 (越下方的對話越新) ---
+            # --- 渲染歷史對話 ---
             st.markdown("### 💬 對話紀錄")
             for msg in st.session_state.messages:
                 if msg["role"] == "system":
@@ -130,23 +130,21 @@ def main():
                         st.markdown(msg["content"])
 
     # ==========================================
-    # 【右側欄位】引擎狀態即時監控 (Rolling SAP)
+    # 【右側欄位】引擎狀態即時監控 (v2.5)
     # ==========================================
     with col_right:
-        st.subheader("⚙️ 引擎底層認知狀態 (Live SAP)")
-        st.caption("即時解析 Step 1~4 的內部推演結果")
+        st.subheader("⚙️ 引擎底層認知狀態")
+        st.caption("即時解析內部推演結果")
         st.divider()
         
         d = st.session_state.parsed_dash
+        current_phase = d.get("current_phase", "等待推演...")
         
-        with st.expander("S (Subjective) - 歷史全局統整與主訴", expanded=True):
-            st.markdown(d.get("soap_s", "等待推演..."))
-            
-        with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
-            st.markdown(d.get("soap_a", "等待推演..."))
-            
-        with st.expander("P (Plan) - 處置與防禦性策略", expanded=True):
-            st.markdown(d.get("soap_p", "等待推演..."))
+        st.markdown(f"**當前判定階段：** `{current_phase}`")
+        
+        with st.expander("內部推演原始碼 (Internal XML)", expanded=True):
+            full_internal = d.get("full_internal", "無資料")
+            st.text(full_internal)
             
         st.divider()
         
