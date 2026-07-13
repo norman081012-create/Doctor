@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_app.py
+# project_doctor_app.py (v2.4)
 # ==========================================
 import streamlit as st
 import project_doctor_config as config
@@ -49,14 +49,13 @@ def render_sidebar():
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
-    sys_prompt = config.get_system_prompt(mode="v2_1_engine")
+    sys_prompt = config.get_system_prompt(mode="v2_4_engine")
     
-    # 讀取「全部」歷史對話
     chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
     
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
-        previous_soap=st.session_state.current_soap_xml,
+        previous_state=st.session_state.current_engine_xml,
         chat_history=chat_context,
         user_input=user_input,
         physical_tags=physical_tags
@@ -66,7 +65,7 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     parsed_reply = engine.parse_chat_response(raw_response)
     
     if parsed_reply["raw_xml"]:
-        st.session_state.current_soap_xml = parsed_reply["raw_xml"]
+        st.session_state.current_engine_xml = parsed_reply["raw_xml"]
         st.session_state.parsed_dash = parsed_reply["parsed_dash"]
         
     return parsed_reply["chat_text"]
@@ -76,19 +75,16 @@ def main():
     
     if "initialized" not in st.session_state: st.session_state.initialized = False
     if "messages" not in st.session_state: st.session_state.messages = []
-    if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
+    if "current_engine_xml" not in st.session_state: st.session_state.current_engine_xml = ""
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
     col_left, col_right = st.columns([3, 2])
     
-    # ==========================================
-    # 【左側欄位】動態問診
-    # ==========================================
     with col_left:
         st.title("🩺 臨床動態問診工作區")
-        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.1")
+        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.4")
         st.divider()
         
         if not st.session_state.initialized:
@@ -107,7 +103,6 @@ def main():
                         st.session_state.initialized = True
                         st.rerun()
         else:
-            # --- 病患對話輸入區 ---
             if prompt := st.chat_input("請在此輸入病患的回覆..."):
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.spinner("四維度透視引擎掃描中..."):
@@ -120,7 +115,6 @@ def main():
                 
                 st.rerun()
 
-            # --- 渲染歷史對話 (越新的在越下方) ---
             st.markdown("### 💬 對話紀錄")
             for msg in st.session_state.messages:
                 if msg["role"] == "system":
@@ -129,24 +123,19 @@ def main():
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
 
-    # ==========================================
-    # 【右側欄位】引擎狀態即時監控 (Rolling SAP)
-    # ==========================================
+    # 右側現在專注於監控機器的認知閘門狀態，不顯示繁冗的 SOAP
     with col_right:
         st.subheader("⚙️ 引擎底層認知狀態 (Live SAP)")
-        st.caption("即時解析 Step 1~4 的內部推演結果")
+        st.caption("即時解析內部推演進度與問診階段")
         st.divider()
         
         d = st.session_state.parsed_dash
         
-        with st.expander("S (Subjective) - 歷史全局統整與主訴 (含 OPQRST)", expanded=True):
-            st.markdown(d.get("soap_s", "等待推演..."))
+        with st.expander("📍 當前問診閘門 (Current Phase)", expanded=True):
+            st.markdown(d.get("current_phase", "等待推演..."))
             
-        with st.expander("A (Assessment) - 動態鑑別診斷 (DDx)", expanded=True):
-            st.markdown(d.get("soap_a", "等待推演..."))
-            
-        with st.expander("P (Plan) - 處置與診斷計畫", expanded=True):
-            st.markdown(d.get("soap_p", "等待推演..."))
+        with st.expander("📊 OPQRST 收集進度", expanded=True):
+            st.markdown(d.get("opqrst_status", "等待推演..."))
             
         st.divider()
         
@@ -154,7 +143,7 @@ def main():
             if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
                 st.session_state.messages = []
-                st.session_state.current_soap_xml = ""
+                st.session_state.current_engine_xml = ""
                 st.session_state.parsed_dash = {}
                 st.rerun()
 
