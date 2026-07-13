@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_app.py (v2.5)
+# project_doctor_app.py (v2.5 修復顯示版)
 # ==========================================
 import streamlit as st
 import project_doctor_config as config
@@ -83,9 +83,6 @@ def main():
     
     col_left, col_right = st.columns([3, 2])
     
-    # ==========================================
-    # 【左側欄位】動態問診與實體標籤空投區
-    # ==========================================
     with col_left:
         st.title("🩺 臨床動態問診工作區")
         st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.5")
@@ -107,7 +104,6 @@ def main():
                         st.session_state.initialized = True
                         st.rerun()
         else:
-            # --- 病患對話輸入區 ---
             if prompt := st.chat_input("請在此輸入病患的回覆..."):
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.spinner("四維度透視引擎掃描中..."):
@@ -117,10 +113,8 @@ def main():
                         physical_tags="無新數據"
                     )
                     st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                
                 st.rerun()
 
-            # --- 渲染歷史對話 ---
             st.markdown("### 💬 對話紀錄")
             for msg in st.session_state.messages:
                 if msg["role"] == "system":
@@ -129,9 +123,6 @@ def main():
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
 
-    # ==========================================
-    # 【右側欄位】引擎狀態即時監控 (v2.5)
-    # ==========================================
     with col_right:
         st.subheader("⚙️ 引擎底層認知狀態")
         st.caption("即時解析內部推演結果")
@@ -143,8 +134,12 @@ def main():
         st.markdown(f"**當前判定階段：** `{current_phase}`")
         
         with st.expander("內部推演原始碼 (Internal XML)", expanded=True):
-            full_internal = d.get("full_internal", "無資料")
-            st.text(full_internal)
+            # 【修復點】：改用 st.code() 並直接調用完整的 session_state.current_soap_xml
+            raw_xml = st.session_state.get("current_soap_xml", "")
+            if raw_xml.strip():
+                st.code(raw_xml, language="xml")
+            else:
+                st.info("尚無推演資料")
             
         st.divider()
         
