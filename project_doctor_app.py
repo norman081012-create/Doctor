@@ -55,13 +55,6 @@ def build_chat_context():
     """完整對話（僅供病歷生成使用）"""
     return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
 
-def build_last_turn_context():
-    """僅取上一輪醫師提問（引擎推演使用；累積記憶由 XML 承載）"""
-    for m in reversed(st.session_state.messages):
-        if m["role"] == "assistant":
-            return f"醫師上一句提問：{m['content']}"
-    return "無 (初診啟動)"
-
 def generate_medical_record(api_key, selected_model, age, gender, medical_history, habits):
     record_prompt = config.get_medical_record_prompt(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
@@ -70,18 +63,14 @@ def generate_medical_record(api_key, selected_model, age, gender, medical_histor
     )
     return engine.generate_raw_text(api_key, selected_model, config.MEDICAL_RECORD_SYSTEM_PROMPT, record_prompt)
 
-def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
-    sys_prompt = config.get_system_prompt(mode="v2_5_engine")
+def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input):
+    sys_prompt = config.get_system_prompt(mode="v3_engine")
     
-    # 只讀上一句醫師提問；完整累積記憶改由 rolling XML 承載
-    chat_context = build_last_turn_context()
-    
+    # 累積記憶完全由 rolling XML 承載；病患回覆已內含對應題目（問題 → 答案）
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
         previous_soap=st.session_state.current_soap_xml,
-        chat_history=chat_context,
-        user_input=user_input,
-        physical_tags=physical_tags
+        user_input=user_input
     )
     
     raw_response = engine.generate_raw_text(api_key, selected_model, sys_prompt, forced_prompt)
@@ -251,7 +240,7 @@ def main():
                         t0 = time.perf_counter()
                         reply_text = run_engine_turn(
                             api_key, selected_model, age, gender, medical_history, habits,
-                            user_input=chief_complaint.strip(), physical_tags="無 (初診狀態)"
+                            user_input=chief_complaint.strip()
                         )
                         elapsed = time.perf_counter() - t0
                         st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
@@ -273,8 +262,7 @@ def main():
                     t0 = time.perf_counter()
                     reply_text = run_engine_turn(
                         api_key, selected_model, age, gender, medical_history, habits,
-                        user_input=patient_reply,
-                        physical_tags="無新數據"
+                        user_input=patient_reply
                     )
                     elapsed = time.perf_counter() - t0
                     st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
