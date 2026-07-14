@@ -96,18 +96,3 @@ def get_forced_template(age, gender, medical_history, habits, previous_soap, cha
 {user_input}
 
 【最高指令】請嚴格執行 Step 1 到 Step 3，將內部推演封裝於 XML 並輸出 <current_phase>，最後給出一句對病患的回覆。"""
-
-# 攔截守門員 (Diagnosis Guard Agent) 提示詞
-def get_guard_prompt(chat_text):
-    return f"""你是「診斷洩漏守門員」，任務是審查一段醫師對病患的回覆。
-
-判定標準：
-* LEAK = 醫師以「結論性語氣」向病患宣告診斷，例如「你得的是X」「這就是X」「診斷是X」「你罹患了X」。
-* SAFE = 未下診斷。注意：疾病名稱作為「排查脈絡」或「詢問症狀的背景」不算洩漏（如「我想確認心臟方面的問題」「比較不像是腸胃的狀況」皆為 SAFE）。以機率性措辭表達傾向（「比較不像」「可能性較低」）也是 SAFE。
-
-【只輸出一個詞】：LEAK 或 SAFE。禁止輸出其他任何文字。
-
-待審查的醫師回覆：
----
-{chat_text}
----"""
