@@ -1,6 +1,7 @@
 # ==========================================
 # project_doctor_app.py (v2.5 修復顯示版)
 # ==========================================
+import time
 import streamlit as st
 import project_doctor_config as config
 import project_doctor_engine as engine
@@ -206,6 +207,18 @@ def render_answer_form():
     return "\n".join(lines)
 
 
+def render_chat_history():
+    """渲染對話紀錄；醫師回覆下方顯示該輪引擎推演耗時。"""
+    for msg in st.session_state.messages:
+        if msg["role"] == "system":
+            st.caption(f"🔧 _{msg['content']}_")
+        else:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                if msg["role"] == "assistant" and msg.get("elapsed") is not None:
+                    st.caption(f"⏱️ 本輪推演耗時 {msg['elapsed']:.1f} 秒")
+
+
 def main():
     setup_page()
     
@@ -235,42 +248,36 @@ def main():
                 else:
                     with st.spinner("正在建立認知空間並進行症狀頻譜展延..."):
                         st.session_state.messages.append({"role": "user", "content": f"【主訴】{chief_complaint.strip()}"})
+                        t0 = time.perf_counter()
                         reply_text = run_engine_turn(
                             api_key, selected_model, age, gender, medical_history, habits,
                             user_input=chief_complaint.strip(), physical_tags="無 (初診狀態)"
                         )
-                        st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                        elapsed = time.perf_counter() - t0
+                        st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
                         st.session_state.initialized = True
                         st.rerun()
         elif st.session_state.locked:
             st.warning("🔒 **問診已鎖定** — 資料收集完成或引擎嘗試對病患下診斷，已由守門員攔截。請病患繼續候診，後續以診間醫師為主。")
             st.markdown("### 💬 對話紀錄")
-            for msg in st.session_state.messages:
-                if msg["role"] == "system":
-                    st.caption(f"🔧 _{msg['content']}_")
-                else:
-                    with st.chat_message(msg["role"]):
-                        st.markdown(msg["content"])
+            render_chat_history()
         else:
             st.markdown("### 💬 對話紀錄")
-            for msg in st.session_state.messages:
-                if msg["role"] == "system":
-                    st.caption(f"🔧 _{msg['content']}_")
-                else:
-                    with st.chat_message(msg["role"]):
-                        st.markdown(msg["content"])
+            render_chat_history()
 
             # ===== 作答區：緊鄰最後一輪對話 =====
             patient_reply = render_answer_form()
             if patient_reply:
                 st.session_state.messages.append({"role": "user", "content": patient_reply})
                 with st.spinner("四維度透視引擎掃描中..."):
+                    t0 = time.perf_counter()
                     reply_text = run_engine_turn(
                         api_key, selected_model, age, gender, medical_history, habits,
                         user_input=patient_reply,
                         physical_tags="無新數據"
                     )
-                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                    elapsed = time.perf_counter() - t0
+                    st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
                 st.rerun()
 
     with col_right:
@@ -299,9 +306,11 @@ def main():
             if st.button("✍️ 依目前對話生成病歷", use_container_width=True):
                 with st.spinner("病歷書寫引擎彙整中..."):
                     try:
+                        t0 = time.perf_counter()
                         st.session_state.medical_record = generate_medical_record(
                             api_key, selected_model, age, gender, medical_history, habits
                         )
+                        st.toast(f"⏱️ 病歷生成完成，耗時 {time.perf_counter() - t0:.1f} 秒")
                     except Exception as e:
                         st.error(f"病歷生成失敗：{e}")
             
