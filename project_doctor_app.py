@@ -3,10 +3,18 @@
 # ==========================================
 import time
 import streamlit as st
+from google.api_core.exceptions import ResourceExhausted
 import project_doctor_config as config
 import project_doctor_engine as engine
 
 LOCK_MESSAGE = "本次問診的資料收集已經完成，謝謝您的配合。請您先回候診區稍候，詳細的診斷結果與後續處置，將由診間醫師當面為您說明。"
+QUOTA_MESSAGE = (
+    "⛔ **API 配額耗盡（429 ResourceExhausted）**，已重試多次仍失敗。\n\n"
+    "第一次呼叫就撞 429，通常代表：\n"
+    "1. 該模型的**當日免費配額 (RPD) 已用完** — 等到太平洋時間午夜重置，或改用付費金鑰；\n"
+    "2. 所選模型（pro / preview 系列）free-tier 額度極低 — 建議左側改選 **flash 系列**模型再試。\n\n"
+    "本輪輸入未被消耗，狀態已保留，可直接重試。"
+)
 
 def setup_page():
     st.set_page_config(page_title="Doubt-Driven 臨床認知博弈控制台", layout="wide", initial_sidebar_state="expanded")
@@ -242,14 +250,19 @@ def main():
                     with st.spinner("正在建立認知空間並進行症狀頻譜展延..."):
                         st.session_state.messages.append({"role": "user", "content": f"【主訴】{chief_complaint.strip()}"})
                         t0 = time.perf_counter()
-                        reply_text = run_engine_turn(
-                            api_key, selected_model, age, gender, medical_history, habits,
-                            user_input=chief_complaint.strip()
-                        )
-                        elapsed = time.perf_counter() - t0
-                        st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
-                        st.session_state.initialized = True
-                        st.rerun()
+                        try:
+                            reply_text = run_engine_turn(
+                                api_key, selected_model, age, gender, medical_history, habits,
+                                user_input=chief_complaint.strip()
+                            )
+                        except ResourceExhausted:
+                            st.session_state.messages.pop()  # 回滾，避免重試時主訴重複入列
+                            st.error(QUOTA_MESSAGE)
+                        else:
+                            elapsed = time.perf_counter() - t0
+                            st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
+                            st.session_state.initialized = True
+                            st.rerun()
         elif st.session_state.locked:
             st.warning("🔒 **問診已鎖定** — 資料收集完成或引擎嘗試對病患下診斷，已由守門員攔截。請病患繼續候診，後續以診間醫師為主。")
             st.markdown("### 💬 對話紀錄")
@@ -264,13 +277,18 @@ def main():
                 st.session_state.messages.append({"role": "user", "content": patient_reply})
                 with st.spinner("四維度透視引擎掃描中..."):
                     t0 = time.perf_counter()
-                    reply_text = run_engine_turn(
-                        api_key, selected_model, age, gender, medical_history, habits,
-                        user_input=patient_reply
-                    )
-                    elapsed = time.perf_counter() - t0
-                    st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
-                st.rerun()
+                    try:
+                        reply_text = run_engine_turn(
+                            api_key, selected_model, age, gender, medical_history, habits,
+                            user_input=patient_reply
+                        )
+                    except ResourceExhausted:
+                        st.session_state.messages.pop()  # 回滾，rolling XML 未被更新，狀態一致
+                        st.error(QUOTA_MESSAGE)
+                    else:
+                        elapsed = time.perf_counter() - t0
+                        st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
+                        st.rerun()
 
     with col_right:
         st.subheader("⚙️ 引擎底層認知狀態")
