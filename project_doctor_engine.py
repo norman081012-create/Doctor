@@ -56,7 +56,7 @@ def run_diagnosis_guard(api_key, selected_model, chat_text):
     Prompt 內建於此函式，不依賴 config，避免跨檔案版本不同步。
     設計為 fail-open：守門員本身故障時不阻斷主流程。
     """
-    guard_prompt = f"""你是「診斷洩漏守門員」，任務是審查一段醫師對病患的回覆。
+    guard_prompt = f"""你是「診斷洩漏守門員」，任務是審查一組醫師要問病患的問題。
 
 判定標準：
 * LEAK = 醫師以「結論性語氣」向病患宣告診斷，例如「你得的是X」「這就是X」「診斷是X」「你罹患了X」。
@@ -64,7 +64,7 @@ def run_diagnosis_guard(api_key, selected_model, chat_text):
 
 【只輸出一個詞】：LEAK 或 SAFE。禁止輸出其他任何文字。
 
-待審查的醫師回覆：
+待審查的內容：
 ---
 {chat_text}
 ---"""
@@ -88,9 +88,22 @@ def parse_patient_questions(clinical_text):
     for m in re.finditer(r'<q\s+type\s*=\s*["\']?(yn|text)["\']?\s*>(.*?)</q>', block, flags=re.IGNORECASE | re.DOTALL):
         qtype = m.group(1).lower()
         qtext = re.sub(r"\s+", " ", m.group(2)).strip()
-        if qtext:
-            qs.append({"type": qtype, "text": qtext})
+        if not qtext:
+            continue
+        # 【強制拆題】模型若把兩個問句塞進同一個 <q>，在此硬性拆開。
+        for part in split_compound_question(qtext):
+            qs.append({"type": qtype, "text": part})
     return qs
+
+
+def split_compound_question(qtext):
+    """一個 <q> 內若含多個問句（多個問號），強制拆成多題。"""
+    parts = re.findall(r"[^？?]*[？?]", qtext)
+    tail = re.sub(r"^.*[？?]", "", qtext, flags=re.DOTALL).strip()
+    out = [p.strip() for p in parts if p.strip()]
+    if tail:
+        out.append(tail)
+    return out if len(out) > 1 else [qtext]
 
 
 def parse_chat_response(full_text):
