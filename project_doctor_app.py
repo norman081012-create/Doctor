@@ -5,6 +5,8 @@ import streamlit as st
 import project_doctor_config as config
 import project_doctor_engine as engine
 
+LOCK_MESSAGE = "本次問診的資料收集已經完成，謝謝您的配合。請您先回候診區稍候，詳細的診斷結果與後續處置，將由診間醫師當面為您說明。"
+
 def setup_page():
     st.set_page_config(page_title="Doubt-Driven 臨床認知博弈控制台", layout="wide", initial_sidebar_state="expanded")
 
@@ -68,8 +70,24 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     if parsed_reply["raw_xml"]:
         st.session_state.current_soap_xml = parsed_reply["raw_xml"]
         st.session_state.parsed_dash = parsed_reply["parsed_dash"]
+    
+    chat_text = parsed_reply["chat_text"]
+    dash = parsed_reply["parsed_dash"]
+    
+    # ===== 攔截層 1：Phase 4 完成旗標 =====
+    if dash.get("consultation_complete"):
+        st.session_state.locked = True
+        return LOCK_MESSAGE
+    
+    # ===== 攔截層 2：守門員 Agent（僅於 Phase 3 / Phase 4 啟動，節省配額）=====
+    current_phase = dash.get("current_phase", "")
+    if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
+        guard_prompt = config.get_guard_prompt(chat_text)
+        if engine.run_diagnosis_guard(api_key, selected_model, guard_prompt):
+            st.session_state.locked = True
+            return LOCK_MESSAGE
         
-    return parsed_reply["chat_text"]
+    return chat_text
 
 def main():
     setup_page()
@@ -78,6 +96,7 @@ def main():
     if "messages" not in st.session_state: st.session_state.messages = []
     if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
+    if "locked" not in st.session_state: st.session_state.locked = False
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -103,6 +122,15 @@ def main():
                         st.session_state.messages.append({"role": "assistant", "content": reply_text})
                         st.session_state.initialized = True
                         st.rerun()
+        elif st.session_state.locked:
+            st.warning("🔒 **問診已鎖定** — 資料收集完成或引擎嘗試對病患下診斷，已由守門員攔截。請病患繼續候診，後續以診間醫師為主。")
+            st.markdown("### 💬 對話紀錄")
+            for msg in st.session_state.messages:
+                if msg["role"] == "system":
+                    st.caption(f"🔧 _{msg['content']}_")
+                else:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
         else:
             if prompt := st.chat_input("請在此輸入病患的回覆..."):
                 st.session_state.messages.append({"role": "user", "content": prompt})
@@ -149,6 +177,7 @@ def main():
                 st.session_state.messages = []
                 st.session_state.current_soap_xml = ""
                 st.session_state.parsed_dash = {}
+                st.session_state.locked = False
                 st.rerun()
 
 if __name__ == "__main__":
