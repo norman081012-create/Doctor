@@ -110,9 +110,11 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
             _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
             return LOCK_MESSAGE
     
-    # ===== Scanner Agent：把口語回覆掃描成結構化題目，供表單渲染 =====
+    # ===== Stage 2：問句掃描器 — 把口語回覆拆解成表單題目 =====
     st.session_state.current_questions = engine.run_question_scanner(
-        api_key, selected_model, chat_text
+        api_key, selected_model,
+        config.QUESTION_SCANNER_SYSTEM_PROMPT,
+        config.get_question_scanner_prompt(chat_text)
     )
     
     return chat_text
