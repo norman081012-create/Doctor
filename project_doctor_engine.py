@@ -49,12 +49,25 @@ def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
             else:
                 raise e
 
-def run_diagnosis_guard(api_key, selected_model, guard_prompt):
+def run_diagnosis_guard(api_key, selected_model, chat_text):
     """
     守門員 Agent：獨立第二次呼叫，審查醫師回覆是否對病患下診斷。
     回傳 True = 偵測到診斷洩漏 (LEAK)。
-    設計為 fail-open：守門員本身故障時不阻斷主流程（模擬訓練工具，可靠性優先）。
+    Prompt 內建於此函式，不依賴 config，避免跨檔案版本不同步。
+    設計為 fail-open：守門員本身故障時不阻斷主流程。
     """
+    guard_prompt = f"""你是「診斷洩漏守門員」，任務是審查一段醫師對病患的回覆。
+
+判定標準：
+* LEAK = 醫師以「結論性語氣」向病患宣告診斷，例如「你得的是X」「這就是X」「診斷是X」「你罹患了X」。
+* SAFE = 未下診斷。注意：疾病名稱作為「排查脈絡」或「詢問症狀的背景」不算洩漏（如「我想確認心臟方面的問題」「比較不像是腸胃的狀況」皆為 SAFE）。以機率性措辭表達傾向（「比較不像」「可能性較低」）也是 SAFE。
+
+【只輸出一個詞】：LEAK 或 SAFE。禁止輸出其他任何文字。
+
+待審查的醫師回覆：
+---
+{chat_text}
+---"""
     try:
         genai.configure(api_key=api_key)
         model_inst = genai.GenerativeModel(model_name=selected_model)
