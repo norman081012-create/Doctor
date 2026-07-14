@@ -104,9 +104,13 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     scanner_sys = getattr(config, "QUESTION_SCANNER_SYSTEM_PROMPT", None)
     scanner_builder = getattr(config, "get_question_scanner_prompt", None)
     if scanner_sys and scanner_builder:
-        st.session_state.current_questions = engine.run_question_scanner(
+        qs = engine.run_question_scanner(
             api_key, selected_model, scanner_sys, scanner_builder(chat_text)
         )
+        if not qs:
+            # 機械保險：scanner 失敗（解析失敗或配額耗盡）時，直接從口語抓問句
+            qs = engine.extract_questions_from_chat(chat_text)
+        st.session_state.current_questions = qs
     else:
         # config 版本過舊（缺 Stage 2 prompt）：退回自由文字作答，不讓整個 app 掛掉
         st.session_state.current_questions = []
