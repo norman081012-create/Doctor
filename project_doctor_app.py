@@ -50,11 +50,22 @@ def render_sidebar():
 
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
+def build_chat_context():
+    return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+
+def generate_medical_record(api_key, selected_model, age, gender, medical_history, habits):
+    record_prompt = config.get_medical_record_prompt(
+        age=age, gender=gender, medical_history=medical_history, habits=habits,
+        chat_history=build_chat_context(),
+        soap_xml=st.session_state.current_soap_xml
+    )
+    return engine.generate_raw_text(api_key, selected_model, config.MEDICAL_RECORD_SYSTEM_PROMPT, record_prompt)
+
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
     sys_prompt = config.get_system_prompt(mode="v2_5_engine")
     
     # 讀取「全部」歷史對話
-    chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+    chat_context = build_chat_context()
     
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
@@ -77,6 +88,7 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     # ===== 攔截層 1：Phase 4 完成旗標 =====
     if dash.get("consultation_complete"):
         st.session_state.locked = True
+        _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
         return LOCK_MESSAGE
     
     # ===== 攔截層 2：守門員 Agent（僅於 Phase 3 / Phase 4 啟動，節省配額）=====
@@ -84,9 +96,19 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
         if engine.run_diagnosis_guard(api_key, selected_model, chat_text):
             st.session_state.locked = True
+            _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
             return LOCK_MESSAGE
         
     return chat_text
+
+def _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits):
+    """鎖定時自動生成病歷。失敗不阻斷鎖定流程，可事後手動按鈕重生。"""
+    try:
+        st.session_state.medical_record = generate_medical_record(
+            api_key, selected_model, age, gender, medical_history, habits
+        )
+    except Exception:
+        pass
 
 def main():
     setup_page()
@@ -96,6 +118,7 @@ def main():
     if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
     if "locked" not in st.session_state: st.session_state.locked = False
+    if "medical_record" not in st.session_state: st.session_state.medical_record = ""
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -160,12 +183,36 @@ def main():
         st.divider()
         
         if st.session_state.initialized:
+            # ===== 病歷生成區 =====
+            st.subheader("📄 病歷 (SOAP)")
+            if st.button("✍️ 依目前對話生成病歷", use_container_width=True):
+                with st.spinner("病歷書寫引擎彙整中..."):
+                    try:
+                        st.session_state.medical_record = generate_medical_record(
+                            api_key, selected_model, age, gender, medical_history, habits
+                        )
+                    except Exception as e:
+                        st.error(f"病歷生成失敗：{e}")
+            
+            if st.session_state.medical_record:
+                with st.expander("候診預問診病歷", expanded=True):
+                    st.markdown(st.session_state.medical_record)
+                st.download_button(
+                    "⬇️ 下載病歷 (Markdown)",
+                    data=st.session_state.medical_record,
+                    file_name="pre_consultation_record.md",
+                    mime="text/markdown",
+                    use_container_width=True
+                )
+            
+            st.divider()
             if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
                 st.session_state.initialized = False
                 st.session_state.messages = []
                 st.session_state.current_soap_xml = ""
                 st.session_state.parsed_dash = {}
                 st.session_state.locked = False
+                st.session_state.medical_record = ""
                 st.rerun()
 
     # ===== 頁面底部固定輸入框 =====
