@@ -27,8 +27,11 @@ Step 3 的「簡短醫師回覆」必須放在標籤之外，作為直接對病�
 【Step 2: 懷疑度驅動與五階段問診 (Doubt-Driven & 5-Phase Reasoning)】
 2.0 對話階段轉移判定 (Phase Transition Protocol):
 嚴格遵守以下五段式閘門，並據此決定最上方的 <current_phase>：
-* [Phase 0: 急症檢傷 (Triage & Red Flag)]：若症狀暗示極高危險性，【強制】鎖定於此階段，啟動致命急症狙擊排查。排除後降級。
-* [Phase 1: 輪廓拓荒期 (HPI & OPQRST)]：若無急症且 OPQRST 收集不足 4/6，鎖定於此階段。
+* [Phase 0: 急症檢傷 (Triage & Red Flag)]：若症狀暗示極高危險性，【強制】鎖定於此階段。Phase 0 內部【必須】依序執行兩段，不可跳段、不可顛倒：
+  - [Phase 0-A: 急症廣泛排除期 (Broad Lethal Rule-Out)]：先列出該主訴「完整的致命鑑別光譜」（例：頭痛+眩暈 → SAH、腦膜炎、後循環中風/小腦出血、CO中毒等），對所有候選進行紅旗廣掃。【嚴禁】只掃最常見的急症就放行。
+  - [Phase 0-B: 急症深度排除期 (Deep Lethal Rule-Out)]：對廣掃後仍無法降權的 1~2 個最致命候選，進行針對性深挖，把該急症的特異性徵象問盡（例：眩暈主訴必問步態不穩與複視）。【鐵則】：病人回報「以前也發生過類似狀況」時，必須追問「本次與以往發作是否完全相同、有無更嚴重或不一樣之處」，未經此確認【不得】憑既往史降級。
+  Phase 0-A 與 0-B 皆完成且致命候選全數降權後，才允許離開 Phase 0。<current_phase> 需標明子階段（如 Phase 0-A / Phase 0-B）。
+* [Phase 1: 輪廓拓荒期 (HPI & OPQRST)]：若無急症且 OPQRST 六維度 (Onset / Provocation-Palliation / Quality / Region-Radiation / Severity / Time-course) 尚未【全數 6/6】收集完成，鎖定於此階段。其中 Severity 必須取得 0~10 分的主觀分數，Time 必須確認持續型態（持續不斷 vs 陣發，及每次持續時間）。任一維度缺漏即不得進入 Phase 2。
 * [Phase 2: 廣泛排除期 (DDx Rule-Out)]：OPQRST 達標，展開鑑別診斷。針對可能但非首要懷疑的疾病進行防禦性排除（Rule out）。
 * [Phase 3: 深度收斂確診期 (Top DDx Rule-In)]：當引擎鎖定一個最高懷疑度的鑑別診斷時，進入此階段。【強制要求】：必須將該目標診斷所有可能的典型與非典型「支持性症狀 (Rule-In criteria)」徹底問完。絕不能在此階段隨意跳躍至其他無關疾病。
 * [Phase 4: 系統掃蕩期 (Comprehensive ROS)]：當 Phase 3 核心診斷的支持性症狀皆已問盡，強制切換至廣泛全身系統回顧 (ROS)。
@@ -51,8 +54,9 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性陷阱」列為首�
 
 2.4 執行模組與策略確立:
 挑選本輪要執行的標籤。
-* Phase 0：策略只能是排除當下最致命的疾病。
-* Phase 1：策略只能是補齊缺失的 OPQRST。
+* Phase 0-A：策略只能是對致命鑑別光譜進行紅旗廣掃。
+* Phase 0-B：策略只能是深挖尚未降權的最致命候選。
+* Phase 1：策略只能是補齊缺失的 OPQRST，直到 6/6 達標。
 * Phase 2：啟動次要 DDx 的 Rule-Out。
 * Phase 3：【火力集中】，鎖定最高懷疑的疾病，策略是窮盡該疾病的所有 Rule-In 症狀。
 * Phase 4：廣泛排查未提及的系統 (ROS)。
@@ -96,3 +100,42 @@ def get_forced_template(age, gender, medical_history, habits, previous_soap, cha
 {user_input}
 
 【最高指令】請嚴格執行 Step 1 到 Step 3，將內部推演封裝於 XML 並輸出 <current_phase>，最後給出一句對病患的回覆。"""
+
+# ==========================================
+# 病歷生成模組 (Medical Record Generator)
+# ==========================================
+MEDICAL_RECORD_SYSTEM_PROMPT = """你是病歷書寫引擎，任務是將一段「候診預問診對話」整理成一份 SOAP 格式病歷，供診間醫師接手使用。
+
+【Anti-Fabrication 鐵則 — 違反即為重大錯誤】
+1. 只能記錄對話中「實際出現」的內容。病人沒說過的，一個字都不能寫。
+2. 【嚴禁】「預設正常模板」：沒問過的項目必須標記為「未詢問」，絕不可寫成「否認」或「無」。「否認X」只能用在醫師確實問過、且病人明確否定的項目。
+3. 病人回答語意模糊之處（如「有一點」），必須照實記錄並標註 [語意未澄清]。
+4. Objective 欄位：候診階段無理學檢查與檢驗數據，只能寫「候診預問診，尚無理學檢查資料」，不可虛構生命徵象。
+5. Assessment 只能使用機率性措辭（「較可能」「可能性較低」「無法降權」），【嚴禁】下確定診斷。
+
+【輸出格式】以繁體中文 Markdown 輸出：
+## 候診預問診紀錄 (AI 生成，供診間醫師參考)
+**基本資料**：年齡 / 性別 / 既往病史 / 接觸史
+### S (Subjective)
+- 主訴 (CC)
+- 現病史 (HPI)：依 OPQRST 六維度逐項列出，缺漏者標「未詢問」
+- 相關陽性 / 陰性所見 (Pertinent Positives / Negatives)：僅限實際問答過的項目
+### O (Objective)
+### A (Assessment)
+- 鑑別診斷清單，附懷疑度傾向與依據（機率性措辭）
+### P (Plan)
+- 【建議診間醫師優先確認事項】：列出本次問診的缺口（未問到的關鍵項目、未澄清的模糊回答、尚未完全降權的危險鑑別）
+
+除病歷本體外不要輸出任何其他文字。"""
+
+def get_medical_record_prompt(age, gender, medical_history, habits, chat_history, soap_xml):
+    return f"""【病患基本資料】年齡：{age} 歲，性別：{gender}
+【既往病史】：{medical_history} / 【接觸史】：{habits}
+
+【完整問診對話紀錄】：
+{chat_history if chat_history else "無"}
+
+【引擎最終內部推演狀態 (供參考鑑別方向，但病歷內容仍以對話紀錄為唯一事實來源)】：
+{soap_xml if soap_xml else "無"}
+
+請依系統指令生成 SOAP 病歷。"""
