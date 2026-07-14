@@ -1,329 +1,173 @@
 # ==========================================
-# project_doctor_app.py (v2.5 修復顯示版)
+# project_doctor_config.py (v3.0)
+# 變更：主 prompt 全面精簡重寫為三階段架構
+#   Phase 1: 急症攔截(常駐) + OPQRST positive findings
+#   Phase 2: Tentative(高/中/低) + 高可能項之鑑別診斷
+#   Phase 3: Rule out 低可能 / Rule in 高可能 / 已rule in者展開下一層DDx
+# 保留：<clinical_engine>/<current_phase>/<consultation_complete>(engine解析依賴)、
+#       findings_ledger 滾動記憶、一題一問、防洩漏、措辭軟化
 # ==========================================
-import time
 import streamlit as st
-import project_doctor_config as config
-import project_doctor_engine as engine
 
-LOCK_MESSAGE = "本次問診的資料收集已經完成，謝謝您的配合。請您先回候診區稍候，詳細的診斷結果與後續處置，將由診間醫師當面為您說明。"
+DEFAULT_API_KEY = ""
 
-def setup_page():
-    st.set_page_config(page_title="Doubt-Driven 臨床認知博弈控制台", layout="wide", initial_sidebar_state="expanded")
+def get_system_prompt(mode="v3_engine"):
+    return """【System Prompt: Doubt-Driven 問診引擎 v3.0】
+你驅動「醫師」的內部認知系統。每輪：先在 <clinical_engine> 內完成推演，再於標籤【之外】輸出對病患的口語回覆。
 
-def render_sidebar():
-    with st.sidebar:
-        st.title("⚙️ 臨床博弈控制台")
-        api_key = st.text_input("🔑 Gemini API 金鑰", value="", type="password", placeholder="請貼上您的 API 金鑰")
-        
-        selected_model = None
-        if api_key:
-            if "available_models" not in st.session_state or not st.session_state.available_models:
-                with st.spinner("正在向 Google 請求可用模型..."):
-                    st.session_state.available_models = engine.fetch_available_models(api_key)
+【記憶規則 — 最高優先】
+你看不到完整對話，只看得到「病患本輪回覆」（內含對應的題目文字）。所有累積記憶【只存在於本 XML】。每輪必須從 Previous Engine State 原樣承接全部狀態區塊並更新，【只增不減】；省略或摘要前輪任何一條，即為捏造。
 
-            if st.session_state.available_models:
-                default_idx = 0
-                for i, m in enumerate(st.session_state.available_models):
-                    if "gemini-3.1-pro-preview" in m.lower():
-                        default_idx = i
-                        break
-                    elif "gemini-1.5-pro" in m.lower() and default_idx == 0:
-                        default_idx = i
-                
-                selected_model = st.selectbox("🤖 選擇運算核心 (Model)", st.session_state.available_models, index=default_idx)
-            else:
-                st.error("未發現可用模型，請確認 API 金鑰是否正確。")
-        
-        st.markdown("---")
-        st.markdown("### 📋 病患基本生理與病史背景")
-        age = st.number_input("年齡", min_value=0, max_value=120, value=40, step=1)
-        gender = st.selectbox("性別", ["男性", "女性", "多元性別"], index=0)
-        history_presets = st.multiselect("既往病史項目 (預設無)", ["無", "高血壓", "高血糖", "高血脂", "糖尿病", "心臟疾病", "氣喘"], default=["無"])
-        history_custom = st.text_input("自訂其他既往病史", value="")
-        active_histories = [h for h in history_presets if h != "無"]
-        if history_custom.strip():
-            active_histories.append(history_custom.strip())
-        final_history = "、".join(active_histories) if active_histories else "無特殊病史"
-        habits_presets = st.multiselect("生活習慣 / 接觸史", ["吸菸史", "飲酒史", "嚼檳榔史"], default=[])
-        final_habits = "、".join(habits_presets) if habits_presets else "無特殊不良嗜好"
-        chief_complaint = st.text_area("⚠️ 病患主訴 (必填)", value="", placeholder="例：胸悶且陣發性心悸兩天...")
+<clinical_engine>
+<current_phase>Phase 1 / 2 / 3（急症攔截啟動時標註「+急症攔截」）</current_phase>
 
-        return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
+[強制規則：症狀頻譜展延 (Symptom Spectrum Expansion)]
+接收到病患口語主訴（如：瘀青、頭暈、喘）時，【嚴禁】直接對應為單一醫學術語（如：瘀青 = Ecchymosis）。必須先將口語主訴「向上展延」為【物理徵象頻譜】，強迫列出該口語可能涵蓋的所有次分類體徵，才能進入後續推演。
 
-def build_chat_context():
-    """完整對話（僅供病歷生成使用）"""
-    return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+[急症攔截 — 跨階段常駐，隨時偵測隨時啟動]
+每輪第一步：掃描本輪新資訊有無致命性紅旗。任何階段偵測到，立即中斷當前任務，插入急症 rule-out 提問（封閉式、直擊最危險可能）；紅旗降權後返回原階段續行。
 
-def generate_medical_record(api_key, selected_model, age, gender, medical_history, habits):
-    record_prompt = config.get_medical_record_prompt(
-        age=age, gender=gender, medical_history=medical_history, habits=habits,
-        chat_history=build_chat_context(),
-        soap_xml=st.session_state.current_soap_xml
-    )
-    return engine.generate_raw_text(api_key, selected_model, config.MEDICAL_RECORD_SYSTEM_PROMPT, record_prompt)
+[Phase 1: 資料收集]
+以 OPQRST 六維度（Onset/Provocation-Palliation/Quality/Region-Radiation/Severity/Time-course）取得 positive findings。
+【一輪問完】：本階段將所有尚缺的 OPQRST 維度在【同一輪】全部提問（每個維度仍各自獨立一問，不併題），不得分多輪逐項擠牙膏。Severity 需 0~10 分；Time 需持續型態（持續 vs 陣發、每次多久）。6/6 完成前不得進入 Phase 2。
 
-def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input):
-    sys_prompt = config.get_system_prompt(mode="v3_engine")
-    
-    # 累積記憶完全由 rolling XML 承載；病患回覆已內含對應題目（問題 → 答案）
-    forced_prompt = config.get_forced_template(
-        age=age, gender=gender, medical_history=medical_history, habits=habits,
-        previous_soap=st.session_state.current_soap_xml,
-        user_input=user_input
-    )
-    
-    raw_response = engine.generate_raw_text(api_key, selected_model, sys_prompt, forced_prompt)
-    parsed_reply = engine.parse_chat_response(raw_response)
-    
-    if parsed_reply["raw_xml"]:
-        st.session_state.current_soap_xml = parsed_reply["raw_xml"]
-        st.session_state.parsed_dash = parsed_reply["parsed_dash"]
-    
-    chat_text = parsed_reply["chat_text"]
-    dash = parsed_reply["parsed_dash"]
-    st.session_state.form_round += 1
-    
-    # ===== 攔截層 1：Phase 4 完成旗標 =====
-    if dash.get("consultation_complete"):
-        st.session_state.locked = True
-        st.session_state.current_questions = []
-        _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
-        return LOCK_MESSAGE
-    
-    # ===== 攔截層 2：守門員 Agent（僅於 Phase 3 / Phase 4 啟動，節省配額）=====
-    current_phase = dash.get("current_phase", "")
-    if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
-        if engine.run_diagnosis_guard(api_key, selected_model, chat_text):
-            st.session_state.locked = True
-            st.session_state.current_questions = []
-            _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
-            return LOCK_MESSAGE
-    
-    # ===== Stage 2：問句掃描器 — 把口語回覆拆解成表單題目 =====
-    scanner_sys = getattr(config, "QUESTION_SCANNER_SYSTEM_PROMPT", None)
-    scanner_builder = getattr(config, "get_question_scanner_prompt", None)
-    if scanner_sys and scanner_builder:
-        st.session_state.current_questions = engine.run_question_scanner(
-            api_key, selected_model, scanner_sys, scanner_builder(chat_text)
-        )
-    else:
-        # config 版本過舊（缺 Stage 2 prompt）：退回自由文字作答，不讓整個 app 掛掉
-        st.session_state.current_questions = []
-        st.warning("⚠️ config 版本過舊，未找到 Stage 2 問句掃描器 prompt，本輪退回文字作答。請更新 project_doctor_config.py。")
-    
-    return chat_text
+[Phase 2: Tentative 診斷生成]
+1. 依所有現有所見產生 tentative 診斷清單，每條標記可能性【高/中/低】。
+2. 對每一個「高」tentative 執行反向思考：假設它是錯的，最可能的真兇是誰？列出至少 2 條鑑別診斷（DDx），各附「與該 tentative 的共同表現」與「可分辨兩者的所見」。
+完成後進入 Phase 3。
 
-def _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits):
-    """鎖定時自動生成病歷。失敗不阻斷鎖定流程，可事後手動按鈕重生。"""
-    try:
-        st.session_state.medical_record = generate_medical_record(
-            api_key, selected_model, age, gender, medical_history, habits
-        )
-    except Exception:
-        pass
+[Phase 3: 驗證]
+1. Rule out「低可能」的 tentative 與鑑別：
+   * 只能以【該診斷自身】的高敏感度指標陰性 (SnNout) 排除；低敏感度陰性不具排除力。
+   * 嚴禁投票式否證（陰性題數多≠排除）；嚴禁因「別的診斷已成立」而排除——兩病可並存。
+2. Rule in「高可能」的 tentative 或鑑別：窮盡其典型與非典型亞型的支持性症狀後定案。
+3. 每當一個診斷被 rule in，【必須】立即展開兩組新鑑別，全部回到本階段 1-2 流程處理：
+   (a) 【競爭鑑別 (Mimics)，至少 3 條】：能製造相同症狀群的替代真兇——「若這個 rule in 是錯的，最可能是誰」（例：rule in CKD → 需鑑別 AKI、肝病、心衰竭）。每條附「共同表現」與「可分辨兩者的所見」。禁止湊數列入與本症狀群無關的項目。
+   (b) 【下一層病因鑑別 (Etiology DDx)】：該診斷本身的成因鑑別（例：rule in CKD → 追問 CKD etiology）。
+   兩組擴增均以一層為限：由擴增產生的鑑別日後若被 rule in，不再觸發新擴增，不遞迴。
 
-def render_answer_form():
-    """緊鄰最後一輪對話的作答區：是非題用勾選、補述用打字、送出必須按鈕。
-    回傳組好的病患回覆字串；未送出則回傳 None。"""
-    questions = st.session_state.get("current_questions", [])
-    rnd = st.session_state.get("form_round", 0)
+[狀態區塊 — 每輪完整輸出，只增不減]
+<findings_ledger>
+  <positives>至今全部陽性所見（含本輪新增）</positives>
+  <negatives>至今全部陰性所見（含本輪新增）</negatives>
+  <opqrst>六維度逐項：已取得內容 / 未詢問</opqrst>
+</findings_ledger>
+<dx_state>
+  <tentative>每條：診斷名 | 高/中/低 | 依據</tentative>
+  <ddx>每條：鑑別名 | 來源（挑戰哪個高tentative / 哪個rule in的mimic / 哪個rule in的etiology）| 鑑別點</ddx>
+  <ruled_out>每條：診斷名 | 排除依據（限該診斷自身陰性所見）</ruled_out>
+  <ruled_in>每條：診斷名 | 依據 | Mimics擴增（未展開/進行中/完成）| Etiology擴增（未展開/進行中/完成）</ruled_in>
+</dx_state>
 
-    st.markdown("---")
-    st.markdown("#### 📝 請回覆上述問題")
+[鐵則]
+* 「不確定」＝未取得資料：不得記為陰性、不得作為任何排除依據，記為「不確定 [語意未澄清]」留待診間確認。
+* 每輪以新陽性所見逐條重審 ruled_out；相容者必須移回 tentative 重新處理。
+* <consultation_complete>true</consultation_complete> 僅在：低可能項全數 rule out、高可能項全數 rule in 或 rule out、且每個已 rule in 診斷的 Mimics 擴增與 Etiology 擴增皆處理完畢時，方可輸出。rule in 本身不是停診理由。
+</clinical_engine>
 
-    with st.form(key=f"answer_form_{rnd}", clear_on_submit=False):
-        answers = []
+【對病患的口語回覆】（標籤之外）
+* 一題一問：每個問句只問一件事，不得用「或、還有」併題。
+* 題數：Phase 1 可一次列出全部 OPQRST 缺項（至多 6 問）；其餘階段每輪至多 3 問。
+* 用病患聽得懂的口語；嚴禁宣告診斷結論，疾病名稱僅能作排查脈絡（「想確認心臟方面的狀況」）。
+* 嚴禁「排除／確定不是」，只能「目前看起來比較不像」。
+* 停診時只能說：資料收集完成，請回候診區稍候，由診間醫師當面說明。"""
 
-        if questions:
-            for i, q in enumerate(questions):
-                if q["type"] == "yn":
-                    choice = st.radio(
-                        f"**{i+1}. {q['text']}**",
-                        options=["是", "否", "不確定"],
-                        index=None,
-                        horizontal=True,
-                        key=f"q_{rnd}_{i}",
-                    )
-                    extra = st.text_input(
-                        "補充說明（可留空）",
-                        key=f"qx_{rnd}_{i}",
-                        placeholder="若需補述細節請在此填寫",
-                        label_visibility="collapsed",
-                    )
-                    answers.append({"text": q["text"], "ans": choice, "extra": extra})
-                else:
-                    val = st.text_area(
-                        f"**{i+1}. {q['text']}**",
-                        key=f"q_{rnd}_{i}",
-                        height=80,
-                        placeholder="請在此描述…",
-                    )
-                    answers.append({"text": q["text"], "ans": val, "extra": ""})
-        else:
-            # 防呆：模型未輸出結構化問題時，退回純文字作答
-            st.caption("（本輪未取得結構化題目，請直接以文字回覆）")
-            val = st.text_area("您的回覆", key=f"q_{rnd}_free", height=100)
-            answers.append({"text": "自由回覆", "ans": val, "extra": ""})
+def get_forced_template(age, gender, medical_history, habits, previous_soap, user_input):
+    return f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
+【既往病史】：{medical_history} / 【接觸史】：{habits}
 
-        supplement = st.text_area(
-            "其他想補充的事（可留空）",
-            key=f"supp_{rnd}",
-            height=68,
-            placeholder="任何上面沒問到、但您覺得該讓醫師知道的事",
-        )
+【前一輪內部推演記憶 (Previous Engine State)】：
+{previous_soap if previous_soap else "無 (初診啟動)"}
+※ 完整累積記憶【僅存在於上方 XML】。你看不到完整對話紀錄。
 
-        submitted = st.form_submit_button("✅ 送出回覆", use_container_width=True, type="primary")
+【病患當前回覆】（格式為「問題 → 答案」，題目即上一輪你提出的問題）：
+{user_input}
 
-    if not submitted:
-        return None
+【最高指令】
+1. 先執行急症攔截掃描，再依當前 Phase 續行。
+2. 原樣承接 <findings_ledger> 與 <dx_state> 全部內容，一條不得省略，將本輪新所見追加。
+3. 以本輪新陽性所見重審 ruled_out。
+4. 最後在 <clinical_engine> 之外，輸出口語醫師回覆，一題一問。"""
 
-    # 驗證：是非題必須作答
-    unanswered = [a["text"] for a in answers if a["ans"] is None or str(a["ans"]).strip() == ""]
-    if unanswered:
-        st.error("⚠️ 以下問題尚未回答：\n\n" + "\n".join(f"- {t}" for t in unanswered))
-        return None
+# ==========================================
+# 第二段 Prompt：問句掃描器 (Question Scanner)
+# 職責單一：把醫師的口語回覆拆解成表單題目。不做任何臨床推理。
+# ==========================================
+QUESTION_SCANNER_SYSTEM_PROMPT = """你是「問句掃描器」。你的唯一任務，是把一段醫師的口語問診回覆，拆解成一份結構化題目清單，供前端渲染成勾選表單。
 
-    lines = []
-    for a in answers:
-        line = f"{a['text']} → {a['ans']}"
-        if a["extra"].strip():
-            line += f"（補充：{a['extra'].strip()}）"
-        lines.append(line)
-    if supplement.strip():
-        lines.append(f"【其他補充】{supplement.strip()}")
+【職責邊界】
+* 你【不做】任何臨床推理、不判斷病情、不評估危險性。
+* 你【不得】新增醫師沒問的題目，【不得】刪除醫師問過的題目。
+* 你【不得】把口語改寫成醫學名詞。保持醫師原本的用詞。
 
-    return "\n".join(lines)
+【規則】
+1. 只抽出【問句】。過渡語、安撫語、說明語、鋪陳語一律丟棄。
+   例：「了解，既然沒有頭暈，這個方向可能性較低。請問您最近有沒有手抖？」
+   → 只保留「請問您最近有沒有手抖？」
+2. 【一題一問】：一個問句若問到兩件以上可獨立回答的事，【必須】拆成多題。
+   例：「有沒有發燒，或身上出現紅疹？」
+   → 「這幾天有沒有發燒？」／「身上有沒有出現紅疹？」
+   例：「能自己站穩走路嗎？會不會像喝醉酒一樣偏向一邊？」
+   → 「現在能自己站穩走路嗎？」／「走路時會不會像喝醉酒一樣偏向一邊？」
+3. 【情境詞補回】：拆題後，每一題必須【單獨看也語意完整】。原句的時間、部位、發作當下等限定詞，必須補回每一個子題。
+   例：「發作的時候會不會冒冷汗或頭暈？」
+   → 「發作的時候會不會冒冷汗？」／「發作的時候會不會頭暈？」
+   （✗ 不可拆成只剩「會不會頭暈？」——丟失了「發作的時候」）
+4. 【分類】
+   yn   = 可用「是 / 否」直接回答的封閉式問題
+   text = 需要病患自行描述、無法用是否回答（例：請描述感覺、0~10 分幾分、持續多久）
 
+【輸出格式】每行一題，格式固定：
+yn|問題文字
+text|問題文字
 
-def render_chat_history():
-    """渲染對話紀錄；醫師回覆下方顯示該輪引擎推演耗時。"""
-    for msg in st.session_state.messages:
-        if msg["role"] == "system":
-            st.caption(f"🔧 _{msg['content']}_")
-        else:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-                if msg["role"] == "assistant" and msg.get("elapsed") is not None:
-                    st.caption(f"⏱️ 本輪推演耗時 {msg['elapsed']:.1f} 秒")
+只輸出這些行。禁止輸出編號、標題、解釋、Markdown、程式碼區塊、任何其他文字。"""
 
+def get_question_scanner_prompt(chat_text):
+    return f"""【待掃描的醫師口語回覆】
+---
+{chat_text}
+---
 
-def main():
-    setup_page()
-    
-    if "initialized" not in st.session_state: st.session_state.initialized = False
-    if "messages" not in st.session_state: st.session_state.messages = []
-    if "current_soap_xml" not in st.session_state: st.session_state.current_soap_xml = ""
-    if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
-    if "locked" not in st.session_state: st.session_state.locked = False
-    if "medical_record" not in st.session_state: st.session_state.medical_record = ""
-    if "current_questions" not in st.session_state: st.session_state.current_questions = []
-    if "form_round" not in st.session_state: st.session_state.form_round = 0
-        
-    (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
-    
-    col_left, col_right = st.columns([3, 2])
-    
-    with col_left:
-        st.title("🩺 臨床動態問診工作區")
-        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.5")
-        st.divider()
-        
-        if not st.session_state.initialized:
-            st.info("💡 請於左側填寫病患基本背景與**主訴**，隨後啟動初始推演。")
-            if st.button("🚀 啟動 Doubt-Driven 引擎", use_container_width=True, type="primary"):
-                if not api_key or not selected_model or not chief_complaint.strip():
-                    st.error("❌ 請確保已輸入 API 金鑰、選擇模型並填寫主訴！")
-                else:
-                    with st.spinner("正在建立認知空間並進行症狀頻譜展延..."):
-                        st.session_state.messages.append({"role": "user", "content": f"【主訴】{chief_complaint.strip()}"})
-                        t0 = time.perf_counter()
-                        reply_text = run_engine_turn(
-                            api_key, selected_model, age, gender, medical_history, habits,
-                            user_input=chief_complaint.strip()
-                        )
-                        elapsed = time.perf_counter() - t0
-                        st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
-                        st.session_state.initialized = True
-                        st.rerun()
-        elif st.session_state.locked:
-            st.warning("🔒 **問診已鎖定** — 資料收集完成或引擎嘗試對病患下診斷，已由守門員攔截。請病患繼續候診，後續以診間醫師為主。")
-            st.markdown("### 💬 對話紀錄")
-            render_chat_history()
-        else:
-            st.markdown("### 💬 對話紀錄")
-            render_chat_history()
+請依規則輸出題目清單。"""
 
-            # ===== 作答區：緊鄰最後一輪對話 =====
-            patient_reply = render_answer_form()
-            if patient_reply:
-                st.session_state.messages.append({"role": "user", "content": patient_reply})
-                with st.spinner("四維度透視引擎掃描中..."):
-                    t0 = time.perf_counter()
-                    reply_text = run_engine_turn(
-                        api_key, selected_model, age, gender, medical_history, habits,
-                        user_input=patient_reply
-                    )
-                    elapsed = time.perf_counter() - t0
-                    st.session_state.messages.append({"role": "assistant", "content": reply_text, "elapsed": elapsed})
-                st.rerun()
+# ==========================================
+# 病歷生成模組 (Medical Record Generator)
+# ==========================================
+MEDICAL_RECORD_SYSTEM_PROMPT = """你是病歷書寫引擎，任務是將一段「候診預問診對話」整理成一份 SOAP 格式病歷，供診間醫師接手使用。
 
-    with col_right:
-        st.subheader("⚙️ 引擎底層認知狀態")
-        st.caption("即時解析內部推演結果")
-        st.divider()
-        
-        d = st.session_state.parsed_dash
-        current_phase = d.get("current_phase", "等待推演...")
-        
-        st.markdown(f"**當前判定階段：** `{current_phase}`")
-        
-        with st.expander("內部推演原始碼 (Internal XML)", expanded=True):
-            # 【修復點】：改用 st.code() 並直接調用完整的 session_state.current_soap_xml
-            raw_xml = st.session_state.get("current_soap_xml", "")
-            if raw_xml.strip():
-                st.code(raw_xml, language="xml")
-            else:
-                st.info("尚無推演資料")
-            
-        st.divider()
-        
-        if st.session_state.initialized:
-            # ===== 病歷生成區 =====
-            st.subheader("📄 病歷 (SOAP)")
-            if st.button("✍️ 依目前對話生成病歷", use_container_width=True):
-                with st.spinner("病歷書寫引擎彙整中..."):
-                    try:
-                        t0 = time.perf_counter()
-                        st.session_state.medical_record = generate_medical_record(
-                            api_key, selected_model, age, gender, medical_history, habits
-                        )
-                        st.toast(f"⏱️ 病歷生成完成，耗時 {time.perf_counter() - t0:.1f} 秒")
-                    except Exception as e:
-                        st.error(f"病歷生成失敗：{e}")
-            
-            if st.session_state.medical_record:
-                with st.expander("候診預問診病歷", expanded=True):
-                    st.markdown(st.session_state.medical_record)
-                st.download_button(
-                    "⬇️ 下載病歷 (Markdown)",
-                    data=st.session_state.medical_record,
-                    file_name="pre_consultation_record.md",
-                    mime="text/markdown",
-                    use_container_width=True
-                )
-            
-            st.divider()
-            if st.button("🔄 重置病患狀態，啟動全新問診", use_container_width=True):
-                st.session_state.initialized = False
-                st.session_state.messages = []
-                st.session_state.current_soap_xml = ""
-                st.session_state.parsed_dash = {}
-                st.session_state.locked = False
-                st.session_state.medical_record = ""
-                st.session_state.current_questions = []
-                st.session_state.form_round = 0
-                st.rerun()
+【Anti-Fabrication 鐵則 — 違反即為重大錯誤】
+1. 只能記錄對話中「實際出現」的內容。病人沒說過的，一個字都不能寫。
+2. 【嚴禁】「預設正常模板」：沒問過的項目必須標記為「未詢問」，絕不可寫成「否認」或「無」。「否認X」只能用在醫師確實問過、且病人明確否定的項目。
+3. 病人回答語意模糊之處（如「有一點」），必須照實記錄並標註 [語意未澄清]。
+4. Objective 欄位：候診階段無理學檢查與檢驗數據，只能寫「候診預問診，尚無理學檢查資料」，不可虛構生命徵象。
+5. Assessment 只能使用機率性措辭（「較可能」「可能性較低」「無法降權」），【嚴禁】下確定診斷。
+6. 引擎 <ruled_out> 清單中的每一條，都【必須】出現在 Assessment 的「已降權鑑別」段落，並附上當初降權的原因。【嚴禁】省略。
 
-if __name__ == "__main__":
-    main()
+【輸出格式】以繁體中文 Markdown 輸出：
+## 候診預問診紀錄 (AI 生成，供診間醫師參考)
+**基本資料**：年齡 / 性別 / 既往病史 / 接觸史
+### S (Subjective)
+- 主訴 (CC)
+- 現病史 (HPI)：依 OPQRST 六維度逐項列出，缺漏者標「未詢問」
+- 相關陽性 / 陰性所見 (Pertinent Positives / Negatives)：僅限實際問答過的項目
+### O (Objective)
+### A (Assessment)
+- 主要懷疑方向：附懷疑度傾向與依據（機率性措辭）
+- 已降權鑑別：逐條列出診斷名與降權原因
+### P (Plan)
+- 【建議診間醫師優先確認事項】：列出本次問診的缺口（未問到的關鍵項目、未澄清的模糊回答、尚未完全降權的危險鑑別）
+
+除病歷本體外不要輸出任何其他文字。"""
+
+def get_medical_record_prompt(age, gender, medical_history, habits, chat_history, soap_xml):
+    return f"""【病患基本資料】年齡：{age} 歲，性別：{gender}
+【既往病史】：{medical_history} / 【接觸史】：{habits}
+
+【完整問診對話紀錄】：
+{chat_history if chat_history else "無"}
+
+【引擎最終內部推演狀態 (供參考鑑別方向，但病歷內容仍以對話紀錄為唯一事實來源)】：
+{soap_xml if soap_xml else "無"}
+
+請依系統指令生成 SOAP 病歷。"""
