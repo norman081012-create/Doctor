@@ -82,8 +82,7 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     # ===== 攔截層 2：守門員 Agent（僅於 Phase 3 / Phase 4 啟動，節省配額）=====
     current_phase = dash.get("current_phase", "")
     if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
-        guard_prompt = config.get_guard_prompt(chat_text)
-        if engine.run_diagnosis_guard(api_key, selected_model, guard_prompt):
+        if engine.run_diagnosis_guard(api_key, selected_model, chat_text):
             st.session_state.locked = True
             return LOCK_MESSAGE
         
@@ -132,17 +131,6 @@ def main():
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
         else:
-            if prompt := st.chat_input("請在此輸入病患的回覆..."):
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.spinner("四維度透視引擎掃描中..."):
-                    reply_text = run_engine_turn(
-                        api_key, selected_model, age, gender, medical_history, habits,
-                        user_input=prompt, 
-                        physical_tags="無新數據"
-                    )
-                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
-                st.rerun()
-
             st.markdown("### 💬 對話紀錄")
             for msg in st.session_state.messages:
                 if msg["role"] == "system":
@@ -179,6 +167,20 @@ def main():
                 st.session_state.parsed_dash = {}
                 st.session_state.locked = False
                 st.rerun()
+
+    # ===== 頁面底部固定輸入框 =====
+    # st.chat_input 在頂層呼叫時會自動釘在視窗最下方；放進 column 內會變成內嵌元件。
+    if st.session_state.initialized and not st.session_state.locked:
+        if prompt := st.chat_input("請在此輸入病患的回覆..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.spinner("四維度透視引擎掃描中..."):
+                reply_text = run_engine_turn(
+                    api_key, selected_model, age, gender, medical_history, habits,
+                    user_input=prompt,
+                    physical_tags="無新數據"
+                )
+                st.session_state.messages.append({"role": "assistant", "content": reply_text})
+            st.rerun()
 
 if __name__ == "__main__":
     main()
