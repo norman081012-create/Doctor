@@ -97,7 +97,10 @@ def _parse_scanner_output(raw):
     qs = []
     raw = re.sub(r"```[a-z]*\n|\n```|```", "", raw, flags=re.IGNORECASE)
     for line in raw.splitlines():
-        line = line.strip()
+        # 容錯 1：全形豎線／變體 → 半形（Gemini 中文輸出常見）
+        line = line.strip().replace("｜", "|").replace("∣", "|").replace("¦", "|")
+        # 容錯 2：行首編號、項目符號先剝除（否則會黏在 qtype 上導致整行被丟棄）
+        line = re.sub(r"^\s*(?:[-*•]|\d+[\.、)]|[（(]\d+[)）])\s*", "", line)
         if not line or "|" not in line:
             continue
         qtype, _, qtext = line.partition("|")
@@ -109,6 +112,29 @@ def _parse_scanner_output(raw):
             continue
         # 保險：scanner 沒拆乾淨的併題，在此硬拆
         for part in split_compound_question(qtext):
+            qs.append({"type": qtype, "text": part})
+    return qs
+
+
+def extract_questions_from_chat(chat_text):
+    """
+    機械保險（不呼叫 API）：scanner 失敗或配額耗盡時，
+    直接用 regex 從醫師口語回覆抓出問句，確保表單永遠有題目。
+    yn 判定採保守啟發式，猜不準的一律降級為 text（自由描述），不影響作答正確性。
+    """
+    if not chat_text:
+        return []
+    qs = []
+    yn_pat = re.compile(r"(嗎|會不會|有沒有|是不是|是否|能不能|可不可以|有無)")
+    for line in chat_text.splitlines():
+        line = re.sub(r"^\s*(?:[-*•]|\d+[\.、)]|[（(]\d+[)）])\s*", "", line.strip())
+        if not line or ("？" not in line and "?" not in line):
+            continue
+        for part in split_compound_question(line):
+            part = part.strip().lstrip("，,；;、 ")
+            if not part or ("？" not in part and "?" not in part):
+                continue
+            qtype = "yn" if (yn_pat.search(part) and "還是" not in part) else "text"
             qs.append({"type": qtype, "text": part})
     return qs
 
