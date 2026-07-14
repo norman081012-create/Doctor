@@ -44,6 +44,13 @@ def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
         except ResourceExhausted as e:
             if attempt < max_retries - 1:
                 sleep_time = base_wait_time * (2 ** attempt)
+                # 尊重 Google 回傳的建議等待時間（若有），取兩者較大值
+                rd = getattr(e, "retry_delay", None)
+                if rd is not None:
+                    try:
+                        sleep_time = max(sleep_time, rd.seconds + 1)
+                    except Exception:
+                        pass
                 print(f"達到 API 速率限制，將於 {sleep_time} 秒後重試... (第 {attempt + 1}/{max_retries} 次)")
                 time.sleep(sleep_time)
             else:
