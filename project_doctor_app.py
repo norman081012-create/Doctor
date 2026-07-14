@@ -92,10 +92,13 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     
     chat_text = parsed_reply["chat_text"]
     dash = parsed_reply["parsed_dash"]
+    st.session_state.current_questions = parsed_reply.get("questions", [])
+    st.session_state.form_round += 1
     
     # ===== 攔截層 1：Phase 4 完成旗標 =====
     if dash.get("consultation_complete"):
         st.session_state.locked = True
+        st.session_state.current_questions = []
         _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
         return LOCK_MESSAGE
     
@@ -104,6 +107,7 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
         if engine.run_diagnosis_guard(api_key, selected_model, chat_text):
             st.session_state.locked = True
+            st.session_state.current_questions = []
             _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
             return LOCK_MESSAGE
         
@@ -118,6 +122,79 @@ def _auto_generate_record(api_key, selected_model, age, gender, medical_history,
     except Exception:
         pass
 
+def render_answer_form():
+    """緊鄰最後一輪對話的作答區：是非題用勾選、補述用打字、送出必須按鈕。
+    回傳組好的病患回覆字串；未送出則回傳 None。"""
+    questions = st.session_state.get("current_questions", [])
+    rnd = st.session_state.get("form_round", 0)
+
+    st.markdown("---")
+    st.markdown("#### 📝 請回覆上述問題")
+
+    with st.form(key=f"answer_form_{rnd}", clear_on_submit=False):
+        answers = []
+
+        if questions:
+            for i, q in enumerate(questions):
+                if q["type"] == "yn":
+                    choice = st.radio(
+                        f"**{i+1}. {q['text']}**",
+                        options=["是", "否", "不確定"],
+                        index=None,
+                        horizontal=True,
+                        key=f"q_{rnd}_{i}",
+                    )
+                    extra = st.text_input(
+                        "補充說明（可留空）",
+                        key=f"qx_{rnd}_{i}",
+                        placeholder="若需補述細節請在此填寫",
+                        label_visibility="collapsed",
+                    )
+                    answers.append({"text": q["text"], "ans": choice, "extra": extra})
+                else:
+                    val = st.text_area(
+                        f"**{i+1}. {q['text']}**",
+                        key=f"q_{rnd}_{i}",
+                        height=80,
+                        placeholder="請在此描述…",
+                    )
+                    answers.append({"text": q["text"], "ans": val, "extra": ""})
+        else:
+            # 防呆：模型未輸出結構化問題時，退回純文字作答
+            st.caption("（本輪未取得結構化題目，請直接以文字回覆）")
+            val = st.text_area("您的回覆", key=f"q_{rnd}_free", height=100)
+            answers.append({"text": "自由回覆", "ans": val, "extra": ""})
+
+        supplement = st.text_area(
+            "其他想補充的事（可留空）",
+            key=f"supp_{rnd}",
+            height=68,
+            placeholder="任何上面沒問到、但您覺得該讓醫師知道的事",
+        )
+
+        submitted = st.form_submit_button("✅ 送出回覆", use_container_width=True, type="primary")
+
+    if not submitted:
+        return None
+
+    # 驗證：是非題必須作答
+    unanswered = [a["text"] for a in answers if a["ans"] is None or str(a["ans"]).strip() == ""]
+    if unanswered:
+        st.error("⚠️ 以下問題尚未回答：\n\n" + "\n".join(f"- {t}" for t in unanswered))
+        return None
+
+    lines = []
+    for a in answers:
+        line = f"{a['text']} → {a['ans']}"
+        if a["extra"].strip():
+            line += f"（補充：{a['extra'].strip()}）"
+        lines.append(line)
+    if supplement.strip():
+        lines.append(f"【其他補充】{supplement.strip()}")
+
+    return "\n".join(lines)
+
+
 def main():
     setup_page()
     
@@ -127,6 +204,8 @@ def main():
     if "parsed_dash" not in st.session_state: st.session_state.parsed_dash = {}
     if "locked" not in st.session_state: st.session_state.locked = False
     if "medical_record" not in st.session_state: st.session_state.medical_record = ""
+    if "current_questions" not in st.session_state: st.session_state.current_questions = []
+    if "form_round" not in st.session_state: st.session_state.form_round = 0
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -169,6 +248,19 @@ def main():
                 else:
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
+
+            # ===== 作答區：緊鄰最後一輪對話 =====
+            patient_reply = render_answer_form()
+            if patient_reply:
+                st.session_state.messages.append({"role": "user", "content": patient_reply})
+                with st.spinner("四維度透視引擎掃描中..."):
+                    reply_text = run_engine_turn(
+                        api_key, selected_model, age, gender, medical_history, habits,
+                        user_input=patient_reply,
+                        physical_tags="無新數據"
+                    )
+                    st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                st.rerun()
 
     with col_right:
         st.subheader("⚙️ 引擎底層認知狀態")
@@ -221,21 +313,9 @@ def main():
                 st.session_state.parsed_dash = {}
                 st.session_state.locked = False
                 st.session_state.medical_record = ""
+                st.session_state.current_questions = []
+                st.session_state.form_round = 0
                 st.rerun()
-
-    # ===== 頁面底部固定輸入框 =====
-    # st.chat_input 在頂層呼叫時會自動釘在視窗最下方；放進 column 內會變成內嵌元件。
-    if st.session_state.initialized and not st.session_state.locked:
-        if prompt := st.chat_input("請在此輸入病患的回覆..."):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.spinner("四維度透視引擎掃描中..."):
-                reply_text = run_engine_turn(
-                    api_key, selected_model, age, gender, medical_history, habits,
-                    user_input=prompt,
-                    physical_tags="無新數據"
-                )
-                st.session_state.messages.append({"role": "assistant", "content": reply_text})
-            st.rerun()
 
 if __name__ == "__main__":
     main()
