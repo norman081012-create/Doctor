@@ -77,48 +77,19 @@ def run_diagnosis_guard(api_key, selected_model, chat_text):
     except Exception:
         return False
 
-def run_question_scanner(api_key, selected_model, chat_text):
+def run_question_scanner(api_key, selected_model, system_prompt, user_prompt):
     """
-    Scanner Agent：獨立呼叫，把醫師的口語回覆掃描成結構化題目清單。
-    職責單一——只做「抽出問句 + 拆解併題 + 分類 yn/text」，不做任何臨床推理。
-    設計為 fail-soft：掃描失敗時回傳空清單，前端退回自由文字作答。
+    Stage 2 — 問句掃描器：把醫師的口語回覆掃描成結構化題目清單。
+    本函式只負責【執行呼叫與解析】，prompt 全部由 config 提供（兩段式分工）。
+    fail-soft：掃描失敗回傳空清單，前端退回自由文字作答。
     """
-    if not chat_text or not chat_text.strip():
+    if not user_prompt or not user_prompt.strip():
         return []
-
-    scanner_prompt = f"""你是「問句掃描器」。任務：把下面這段醫師的口語問診回覆，拆解成一份結構化題目清單。
-
-【規則】
-1. 只抽出【問句】。過渡語、安撫語、說明語一律丟棄。
-2. 【一題一問】：一個問句若問到兩件以上可獨立回答的事，必須拆成多題。
-   例：「有沒有發燒，或身上出現紅疹？」→ 拆成「這幾天有沒有發燒？」和「身上有沒有出現紅疹？」
-   例：「能自己站穩走路嗎？會不會像喝醉酒一樣偏一邊？」→ 拆成兩題。
-3. 拆題時【必須】補回原句的情境詞（時間、部位、發作當下等），讓每一題單獨看也完整。
-4. 分類：
-   yn   = 可用「是/否」直接回答
-   text = 需要描述、無法用是否回答（如：請描述感覺、幾分、多久）
-5. 保持醫師的口語用詞，【不得】改寫成醫學名詞、【不得】自行新增醫師沒問的題目。
-
-【輸出格式】每行一題，格式固定為：
-yn|問題文字
-text|問題文字
-
-只輸出這些行。禁止輸出編號、標題、解釋、Markdown、程式碼區塊。
-
-【待掃描的醫師回覆】
----
-{chat_text}
----"""
-
     try:
-        genai.configure(api_key=api_key)
-        model_inst = genai.GenerativeModel(model_name=selected_model)
-        response = model_inst.generate_content(scanner_prompt)
-        raw = response.text or ""
+        raw = generate_raw_text(api_key, selected_model, system_prompt, user_prompt)
     except Exception:
         return []
-
-    return _parse_scanner_output(raw)
+    return _parse_scanner_output(raw or "")
 
 
 def _parse_scanner_output(raw):
