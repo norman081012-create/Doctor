@@ -77,27 +77,73 @@ def run_diagnosis_guard(api_key, selected_model, chat_text):
     except Exception:
         return False
 
-def parse_patient_questions(clinical_text):
-    """從 <patient_questions> 解析結構化問題清單。"""
-    if not clinical_text:
+def run_question_scanner(api_key, selected_model, chat_text):
+    """
+    Scanner Agent：獨立呼叫，把醫師的口語回覆掃描成結構化題目清單。
+    職責單一——只做「抽出問句 + 拆解併題 + 分類 yn/text」，不做任何臨床推理。
+    設計為 fail-soft：掃描失敗時回傳空清單，前端退回自由文字作答。
+    """
+    if not chat_text or not chat_text.strip():
         return []
-    block = extract_tag_content("patient_questions", clinical_text)
-    if not block:
+
+    scanner_prompt = f"""你是「問句掃描器」。任務：把下面這段醫師的口語問診回覆，拆解成一份結構化題目清單。
+
+【規則】
+1. 只抽出【問句】。過渡語、安撫語、說明語一律丟棄。
+2. 【一題一問】：一個問句若問到兩件以上可獨立回答的事，必須拆成多題。
+   例：「有沒有發燒，或身上出現紅疹？」→ 拆成「這幾天有沒有發燒？」和「身上有沒有出現紅疹？」
+   例：「能自己站穩走路嗎？會不會像喝醉酒一樣偏一邊？」→ 拆成兩題。
+3. 拆題時【必須】補回原句的情境詞（時間、部位、發作當下等），讓每一題單獨看也完整。
+4. 分類：
+   yn   = 可用「是/否」直接回答
+   text = 需要描述、無法用是否回答（如：請描述感覺、幾分、多久）
+5. 保持醫師的口語用詞，【不得】改寫成醫學名詞、【不得】自行新增醫師沒問的題目。
+
+【輸出格式】每行一題，格式固定為：
+yn|問題文字
+text|問題文字
+
+只輸出這些行。禁止輸出編號、標題、解釋、Markdown、程式碼區塊。
+
+【待掃描的醫師回覆】
+---
+{chat_text}
+---"""
+
+    try:
+        genai.configure(api_key=api_key)
+        model_inst = genai.GenerativeModel(model_name=selected_model)
+        response = model_inst.generate_content(scanner_prompt)
+        raw = response.text or ""
+    except Exception:
         return []
+
+    return _parse_scanner_output(raw)
+
+
+def _parse_scanner_output(raw):
+    """解析 scanner 的 'yn|問題' 逐行輸出，並做最後一道機械拆題保險。"""
     qs = []
-    for m in re.finditer(r'<q\s+type\s*=\s*["\']?(yn|text)["\']?\s*>(.*?)</q>', block, flags=re.IGNORECASE | re.DOTALL):
-        qtype = m.group(1).lower()
-        qtext = re.sub(r"\s+", " ", m.group(2)).strip()
+    raw = re.sub(r"```[a-z]*\n|\n```|```", "", raw, flags=re.IGNORECASE)
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        qtype, _, qtext = line.partition("|")
+        qtype = qtype.strip().lower()
+        if qtype not in ("yn", "text"):
+            continue
+        qtext = re.sub(r"^\s*[\d]+[\.、)]\s*", "", qtext).strip()
         if not qtext:
             continue
-        # 【強制拆題】模型若把兩個問句塞進同一個 <q>，在此硬性拆開。
+        # 保險：scanner 沒拆乾淨的併題，在此硬拆
         for part in split_compound_question(qtext):
             qs.append({"type": qtype, "text": part})
     return qs
 
 
 def split_compound_question(qtext):
-    """一個 <q> 內若含多個問句（多個問號），強制拆成多題。"""
+    """一個問句內若含多個問號，強制拆成多題。"""
     parts = re.findall(r"[^？?]*[？?]", qtext)
     tail = re.sub(r"^.*[？?]", "", qtext, flags=re.DOTALL).strip()
     out = [p.strip() for p in parts if p.strip()]
@@ -107,29 +153,18 @@ def split_compound_question(qtext):
 
 
 def parse_chat_response(full_text):
-    """
-    【修復點】：精準分離前端對話文字與後端 XML 狀態，不被模型隨機輸出的 Markdown 干擾。
-    """
-    # 直接在完整文本中尋找 <clinical_engine> 標籤
+    """分離內部 XML 與對病患的口語回覆。題目由 run_question_scanner 另行掃描。"""
     engine_match = re.search(r"<clinical_engine>(.*?)</clinical_engine>", full_text, flags=re.IGNORECASE | re.DOTALL)
-    
-    if engine_match:
-        engine_xml = engine_match.group(1).strip()
-        # 把整個 <clinical_engine> 區塊 (包含標籤) 拔掉
-        chat_text = re.sub(r"<clinical_engine>.*?</clinical_engine>", "", full_text, flags=re.IGNORECASE | re.DOTALL).strip()
-        # 清理可能殘留的 ```xml 或 ``` 標記
-        chat_text = re.sub(r"```[a-z]*\n|\n```|```", "", chat_text, flags=re.IGNORECASE).strip()
-    else:
-        # 防呆：若模型沒照格式輸出，就全部當成對話
-        engine_xml = ""
-        chat_text = re.sub(r"```[a-z]*\n|\n```|```", "", full_text, flags=re.IGNORECASE).strip()
-    
-    # 強制組裝完整 XML
+    engine_xml = engine_match.group(1).strip() if engine_match else ""
+
+    chat_text = re.sub(r"<clinical_engine>.*?</clinical_engine>", "", full_text, flags=re.IGNORECASE | re.DOTALL)
+    chat_text = re.sub(r"</?clinical_engine>", "", chat_text, flags=re.IGNORECASE)
+    chat_text = re.sub(r"```[a-z]*\n|\n```|```", "", chat_text, flags=re.IGNORECASE).strip()
+
     full_xml_string = f"<clinical_engine>\n{engine_xml}\n</clinical_engine>" if engine_xml else ""
 
     return {
         "chat_text": chat_text,
         "parsed_dash": extract_doctor_dashboard(engine_xml),
-        "raw_xml": full_xml_string,
-        "questions": parse_patient_questions(engine_xml)
+        "raw_xml": full_xml_string
     }
