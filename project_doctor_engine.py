@@ -77,6 +77,22 @@ def run_diagnosis_guard(api_key, selected_model, chat_text):
     except Exception:
         return False
 
+def parse_patient_questions(clinical_text):
+    """從 <patient_questions> 解析結構化問題清單。"""
+    if not clinical_text:
+        return []
+    block = extract_tag_content("patient_questions", clinical_text)
+    if not block:
+        return []
+    qs = []
+    for m in re.finditer(r'<q\s+type\s*=\s*["\']?(yn|text)["\']?\s*>(.*?)</q>', block, flags=re.IGNORECASE | re.DOTALL):
+        qtype = m.group(1).lower()
+        qtext = re.sub(r"\s+", " ", m.group(2)).strip()
+        if qtext:
+            qs.append({"type": qtype, "text": qtext})
+    return qs
+
+
 def parse_chat_response(full_text):
     """
     【修復點】：精準分離前端對話文字與後端 XML 狀態，不被模型隨機輸出的 Markdown 干擾。
@@ -101,5 +117,6 @@ def parse_chat_response(full_text):
     return {
         "chat_text": chat_text,
         "parsed_dash": extract_doctor_dashboard(engine_xml),
-        "raw_xml": full_xml_string
+        "raw_xml": full_xml_string,
+        "questions": parse_patient_questions(engine_xml)
     }
