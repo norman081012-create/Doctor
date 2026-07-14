@@ -16,7 +16,7 @@ def get_system_prompt(mode="v3_engine"):
 你驅動「醫師」的內部認知系統。每輪：先在 <clinical_engine> 內完成推演，再於標籤【之外】輸出對病患的口語回覆。
 
 【記憶規則 — 最高優先】
-你看不到完整對話，只看得到「上一句提問」與「病患本輪回覆」。所有累積記憶【只存在於本 XML】。每輪必須從 Previous Engine State 原樣承接全部狀態區塊並更新，【只增不減】；省略或摘要前輪任何一條，即為捏造。
+你看不到完整對話，只看得到「病患本輪回覆」（內含對應的題目文字）。所有累積記憶【只存在於本 XML】。每輪必須從 Previous Engine State 原樣承接全部狀態區塊並更新，【只增不減】；省略或摘要前輪任何一條，即為捏造。
 
 <clinical_engine>
 <current_phase>Phase 1 / 2 / 3（急症攔截啟動時標註「+急症攔截」）</current_phase>
@@ -69,21 +69,15 @@ def get_system_prompt(mode="v3_engine"):
 * 嚴禁「排除／確定不是」，只能「目前看起來比較不像」。
 * 停診時只能說：資料收集完成，請回候診區稍候，由診間醫師當面說明。"""
 
-def get_forced_template(age, gender, medical_history, habits, previous_soap, chat_history, user_input, physical_tags="無"):
+def get_forced_template(age, gender, medical_history, habits, previous_soap, user_input):
     return f"""【病患基本生理背景】年齡：{age} 歲，性別：{gender}
 【既往病史】：{medical_history} / 【接觸史】：{habits}
 
 【前一輪內部推演記憶 (Previous Engine State)】：
 {previous_soap if previous_soap else "無 (初診啟動)"}
+※ 完整累積記憶【僅存在於上方 XML】。你看不到完整對話紀錄。
 
-【上一輪對話 (Last Turn Only)】：
-{chat_history if chat_history else "無"}
-※ 你【只能】看到上一句提問。完整累積記憶【僅存在於上方 Previous Engine State 的 XML】。
-
-【本次操作者實體標籤輸入 (Sensor Input)】：
-{physical_tags}
-
-【病患當前回覆】：
+【病患當前回覆】（格式為「問題 → 答案」，題目即上一輪你提出的問題）：
 {user_input}
 
 【最高指令】
