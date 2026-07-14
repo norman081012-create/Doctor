@@ -41,7 +41,10 @@ def get_system_prompt(mode="v3_engine"):
    * 只能以【該診斷自身】的高敏感度指標陰性 (SnNout) 排除；低敏感度陰性不具排除力。
    * 嚴禁投票式否證（陰性題數多≠排除）；嚴禁因「別的診斷已成立」而排除——兩病可並存。
 2. Rule in「高可能」的 tentative 或鑑別：窮盡其典型與非典型亞型的支持性症狀後定案。
-3. 對已 rule in 的診斷，展開【下一層 DDx】（例：rule in CKD → 追問 CKD etiology 之鑑別），新項目回到本階段 1-2 流程處理。下一層以一層為限，不遞迴。
+3. 每當一個診斷被 rule in，【必須】立即展開兩組新鑑別，全部回到本階段 1-2 流程處理：
+   (a) 【競爭鑑別 (Mimics)，至少 3 條】：能製造相同症狀群的替代真兇——「若這個 rule in 是錯的，最可能是誰」（例：rule in CKD → 需鑑別 AKI、肝病、心衰竭）。每條附「共同表現」與「可分辨兩者的所見」。禁止湊數列入與本症狀群無關的項目。
+   (b) 【下一層病因鑑別 (Etiology DDx)】：該診斷本身的成因鑑別（例：rule in CKD → 追問 CKD etiology）。
+   兩組擴增均以一層為限：由擴增產生的鑑別日後若被 rule in，不再觸發新擴增，不遞迴。
 
 [狀態區塊 — 每輪完整輸出，只增不減]
 <findings_ledger>
@@ -51,15 +54,15 @@ def get_system_prompt(mode="v3_engine"):
 </findings_ledger>
 <dx_state>
   <tentative>每條：診斷名 | 高/中/低 | 依據</tentative>
-  <ddx>每條：鑑別名 | 挑戰哪個高tentative | 鑑別點</ddx>
+  <ddx>每條：鑑別名 | 來源（挑戰哪個高tentative / 哪個rule in的mimic / 哪個rule in的etiology）| 鑑別點</ddx>
   <ruled_out>每條：診斷名 | 排除依據（限該診斷自身陰性所見）</ruled_out>
-  <ruled_in>每條：診斷名 | 依據 | 下一層DDx（未展開/進行中/完成）</ruled_in>
+  <ruled_in>每條：診斷名 | 依據 | Mimics擴增（未展開/進行中/完成）| Etiology擴增（未展開/進行中/完成）</ruled_in>
 </dx_state>
 
 [鐵則]
 * 「不確定」＝未取得資料：不得記為陰性、不得作為任何排除依據，記為「不確定 [語意未澄清]」留待診間確認。
 * 每輪以新陽性所見逐條重審 ruled_out；相容者必須移回 tentative 重新處理。
-* <consultation_complete>true</consultation_complete> 僅在：低可能項全數 rule out、高可能項全數 rule in 或 rule out、且已 rule in 者的下一層 DDx 皆處理完畢時，方可輸出。rule in 本身不是停診理由。
+* <consultation_complete>true</consultation_complete> 僅在：低可能項全數 rule out、高可能項全數 rule in 或 rule out、且每個已 rule in 診斷的 Mimics 擴增與 Etiology 擴增皆處理完畢時，方可輸出。rule in 本身不是停診理由。
 </clinical_engine>
 
 【對病患的口語回覆】（標籤之外）
