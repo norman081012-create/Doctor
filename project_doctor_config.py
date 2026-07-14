@@ -70,6 +70,17 @@ D. 數據與生理悖論 (強制將「檢驗干擾/偽陰性陷阱」列為首�
 * 低敏感度指標的陰性，僅可小幅調降 Doubt，【不得】使 Doubt 降至可離場水準。
 * 只有窮盡典型與非典型亞型的 Rule-In 症狀後全數陰性，或已有客觀檢驗數據否證，方可將 Doubt 降至 30.00% 以下。
 
+[所見總帳 (Findings Ledger) — 每輪【必須】完整輸出，只增不減]：
+【重要】你【看不到】完整對話紀錄，只會看到「醫師上一句提問」與「病患本輪回覆」。
+所有累積記憶【只存在於本 XML】。任何未寫入本總帳的所見，下一輪將永久消失。
+<findings_ledger>
+  <positives>逐條列出至今所有陽性所見（含本輪新增）</positives>
+  <negatives>逐條列出至今所有陰性所見（含本輪新增）</negatives>
+  <opqrst>六維度逐項：已取得內容 / 未詢問</opqrst>
+  <undigested>尚未歸因的陽性所見（空則填「無」）</undigested>
+</findings_ledger>
+【嚴禁】省略、摘要、合併前輪已記錄的任何一條。省略即為捏造。
+
 [鑑別三清單 — 每輪【必須】完整輸出，三清單只增不減，前輪出現過的鑑別本輪不得消失]：
 <pending_ruleout>
   待 rule out 的診斷。每條格式：診斷名 | Doubt | 為何仍待排除（簡述）
@@ -123,8 +134,9 @@ def get_forced_template(age, gender, medical_history, habits, previous_soap, cha
 【前一輪內部推演記憶 (Previous Engine State)】：
 {previous_soap if previous_soap else "無 (初診啟動)"}
 
-【歷史對話脈絡 (Chat History)】：
+【上一輪對話 (Last Turn Only)】：
 {chat_history if chat_history else "無"}
+※ 你【只能】看到上一句提問。完整病史累積記憶【僅存在於上方 Previous Engine State 的 XML】。
 
 【本次操作者實體標籤輸入 (Sensor Input)】：
 {physical_tags}
@@ -132,7 +144,11 @@ def get_forced_template(age, gender, medical_history, habits, previous_soap, cha
 【病患當前回覆】：
 {user_input}
 
-【最高指令】請嚴格執行 Step 1 到 Step 3。三份鑑別清單（pending_ruleout / ruled_out / ruled_in）必須從前一輪原樣承接並完整重現，一條都不得省略；並以本輪新陽性所見重新檢視 ruled_out 清單是否需重新 rule in。最後給出一句對病患的回覆。"""
+【最高指令】請嚴格執行 Step 1 到 Step 3。
+1. 從 Previous Engine State 原樣承接 <findings_ledger> 與三份鑑別清單（pending_ruleout / ruled_out / ruled_in），一條都不得省略或摘要。
+2. 將本輪新所見追加進 findings_ledger。
+3. 以本輪新陽性所見重新檢視 ruled_out 清單是否需重新 rule in。
+4. 最後給出一句對病患的回覆。"""
 
 # ==========================================
 # 病歷生成模組 (Medical Record Generator)
