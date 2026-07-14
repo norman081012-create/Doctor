@@ -51,7 +51,15 @@ def render_sidebar():
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
 def build_chat_context():
+    """完整對話（僅供病歷生成使用）"""
     return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+
+def build_last_turn_context():
+    """僅取上一輪醫師提問（引擎推演使用；累積記憶由 XML 承載）"""
+    for m in reversed(st.session_state.messages):
+        if m["role"] == "assistant":
+            return f"醫師上一句提問：{m['content']}"
+    return "無 (初診啟動)"
 
 def generate_medical_record(api_key, selected_model, age, gender, medical_history, habits):
     record_prompt = config.get_medical_record_prompt(
@@ -64,8 +72,8 @@ def generate_medical_record(api_key, selected_model, age, gender, medical_histor
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input, physical_tags="無"):
     sys_prompt = config.get_system_prompt(mode="v2_5_engine")
     
-    # 讀取「全部」歷史對話
-    chat_context = build_chat_context()
+    # 只讀上一句醫師提問；完整累積記憶改由 rolling XML 承載
+    chat_context = build_last_turn_context()
     
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
