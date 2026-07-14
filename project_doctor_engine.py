@@ -26,6 +26,7 @@ def extract_doctor_dashboard(clinical_text):
         return {}
     return {
         "current_phase": extract_tag_content("current_phase", clinical_text),
+        "consultation_complete": extract_tag_content("consultation_complete", clinical_text).strip().lower() == "true",
         "full_internal": clinical_text
     }
 
@@ -47,6 +48,21 @@ def generate_raw_text(api_key, selected_model, system_prompt, prompt_text):
                 time.sleep(sleep_time)
             else:
                 raise e
+
+def run_diagnosis_guard(api_key, selected_model, guard_prompt):
+    """
+    守門員 Agent：獨立第二次呼叫，審查醫師回覆是否對病患下診斷。
+    回傳 True = 偵測到診斷洩漏 (LEAK)。
+    設計為 fail-open：守門員本身故障時不阻斷主流程（模擬訓練工具，可靠性優先）。
+    """
+    try:
+        genai.configure(api_key=api_key)
+        model_inst = genai.GenerativeModel(model_name=selected_model)
+        response = model_inst.generate_content(guard_prompt)
+        verdict = response.text.strip().upper()
+        return "LEAK" in verdict
+    except Exception:
+        return False
 
 def parse_chat_response(full_text):
     """
