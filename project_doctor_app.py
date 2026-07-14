@@ -90,9 +90,8 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
         st.session_state.current_soap_xml = parsed_reply["raw_xml"]
         st.session_state.parsed_dash = parsed_reply["parsed_dash"]
     
+    chat_text = parsed_reply["chat_text"]
     dash = parsed_reply["parsed_dash"]
-    questions = parsed_reply.get("questions", [])
-    st.session_state.current_questions = questions
     st.session_state.form_round += 1
     
     # ===== 攔截層 1：Phase 4 完成旗標 =====
@@ -102,22 +101,21 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
         _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
         return LOCK_MESSAGE
     
-    # ===== 攔截層 2：守門員 Agent（審查題目文字，僅 Phase 3 / 4 啟動以節省配額）=====
-    question_blob = "\n".join(q["text"] for q in questions)
+    # ===== 攔截層 2：守門員 Agent（僅於 Phase 3 / Phase 4 啟動，節省配額）=====
     current_phase = dash.get("current_phase", "")
-    if ("Phase 3" in current_phase or "Phase 4" in current_phase) and question_blob.strip():
-        if engine.run_diagnosis_guard(api_key, selected_model, question_blob):
+    if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
+        if engine.run_diagnosis_guard(api_key, selected_model, chat_text):
             st.session_state.locked = True
             st.session_state.current_questions = []
             _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
             return LOCK_MESSAGE
     
-    # 純表單模式：對話紀錄中的「醫師發言」即為題目清單
-    if questions:
-        return "\n".join(f"{i+1}. {q['text']}" for i, q in enumerate(questions))
+    # ===== Scanner Agent：把口語回覆掃描成結構化題目，供表單渲染 =====
+    st.session_state.current_questions = engine.run_question_scanner(
+        api_key, selected_model, chat_text
+    )
     
-    # 防呆：模型未吐出題目時，退回其散文輸出
-    return parsed_reply["chat_text"] or "（引擎未產生題目，請重試或檢查模型輸出格式）"
+    return chat_text
 
 def _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits):
     """鎖定時自動生成病歷。失敗不阻斷鎖定流程，可事後手動按鈕重生。"""
