@@ -171,3 +171,4 @@ def get_medical_record_prompt(age, gender, medical_history, habits, chat_history
 {soap_xml if soap_xml else "無"}
 
 請依系統指令生成 SOAP 病歷。"""
+
