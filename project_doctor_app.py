@@ -1,5 +1,5 @@
 # ==========================================
-# project_doctor_app.py (v2.5 修復顯示版)
+# project_doctor_app.py (v4.0 — 整合六階段鑑別診斷推演鏈)
 # ==========================================
 import time
 import streamlit as st
@@ -15,6 +15,15 @@ QUOTA_MESSAGE = (
     "2. 所選模型（pro / preview 系列）free-tier 額度極低 — 建議左側改選 **flash 系列**模型再試。\n\n"
     "本輪輸入未被消耗，狀態已保留，可直接重試。"
 )
+
+DX_CHAIN_STAGES = [
+    ("agent1", "① 急症篩查"),
+    ("agent2", "② 受累系統"),
+    ("agent3", "③ 臆診"),
+    ("step4", "④ 病理機轉"),
+    ("step5", "⑤ 側向機轉擴展"),
+    ("step6", "⑥ 機轉導向鑑別"),
+]
 
 def setup_page():
     st.set_page_config(page_title="Doubt-Driven 臨床認知博弈控制台", layout="wide", initial_sidebar_state="expanded")
@@ -60,25 +69,108 @@ def render_sidebar():
         return (api_key, selected_model, age, gender, final_history, final_habits, chief_complaint)
 
 def build_chat_context():
-    """完整對話（僅供病歷生成使用）"""
+    """完整對話（病歷生成 + Dx Chain 皆使用此完整紀錄）"""
     return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
 
+def format_dx_chain_output(chain_result):
+    """把六階段結果串成一個文字區塊，餵給主引擎 Phase 2 narrowing 使用，也供病歷生成參考。"""
+    if not chain_result or not any(chain_result.values()):
+        return ""
+    parts = []
+    for key, label in DX_CHAIN_STAGES:
+        val = (chain_result.get(key) or "").strip()
+        if val:
+            parts.append(f"【{label}】\n{val}")
+    return "\n\n".join(parts)
+
+def run_dx_chain(api_key, selected_model, age, gender, medical_history, habits):
+    """
+    鑑別診斷推演鏈：六個獨立 Agent 依序呼叫，每個 Agent 都能看到完整醫病對話紀錄
+   （而非 rolling XML 摘要），後一階段的輸入包含前面所有階段的輸出，形成鏈式依賴。
+    fail-soft：任一階段失敗即在該階段中斷，回傳已取得的部分結果，不阻斷主流程
+    （主引擎會在鏈輸出不完整甚至全空時，退回「依 Phase 1 所見自行初步列出候選」）。
+    """
+    chat_history = build_chat_context()
+    result = {"agent1": "", "agent2": "", "agent3": "", "step4": "", "step5": "", "step6": ""}
+
+    try:
+        result["agent1"] = engine.generate_raw_text(
+            api_key, selected_model, config.DX_CHAIN_AGENT1_SYSTEM_PROMPT,
+            config.get_dx_chain_agent1_prompt(age, gender, medical_history, habits, chat_history)
+        )
+    except Exception:
+        return result
+
+    try:
+        result["agent2"] = engine.generate_raw_text(
+            api_key, selected_model, config.DX_CHAIN_AGENT2_SYSTEM_PROMPT,
+            config.get_dx_chain_agent2_prompt(age, gender, medical_history, habits, chat_history, result["agent1"])
+        )
+    except Exception:
+        return result
+
+    try:
+        result["agent3"] = engine.generate_raw_text(
+            api_key, selected_model, config.DX_CHAIN_AGENT3_SYSTEM_PROMPT,
+            config.get_dx_chain_agent3_prompt(age, gender, medical_history, habits, chat_history, result["agent1"], result["agent2"])
+        )
+    except Exception:
+        return result
+
+    try:
+        result["step4"] = engine.generate_raw_text(
+            api_key, selected_model, config.DX_CHAIN_STEP4_SYSTEM_PROMPT,
+            config.get_dx_chain_step4_prompt(age, gender, medical_history, habits, chat_history, result["agent3"])
+        )
+    except Exception:
+        return result
+
+    try:
+        result["step5"] = engine.generate_raw_text(
+            api_key, selected_model, config.DX_CHAIN_STEP5_SYSTEM_PROMPT,
+            config.get_dx_chain_step5_prompt(age, gender, medical_history, habits, chat_history, result["step4"])
+        )
+    except Exception:
+        return result
+
+    try:
+        result["step6"] = engine.generate_raw_text(
+            api_key, selected_model, config.DX_CHAIN_STEP6_SYSTEM_PROMPT,
+            config.get_dx_chain_step6_prompt(age, gender, medical_history, habits, chat_history, result["step5"])
+        )
+    except Exception:
+        return result
+
+    return result
+
 def generate_medical_record(api_key, selected_model, age, gender, medical_history, habits):
+    dx_chain_summary = format_dx_chain_output(st.session_state.get("dx_chain_result", {}))
     record_prompt = config.get_medical_record_prompt(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
         chat_history=build_chat_context(),
-        soap_xml=st.session_state.current_soap_xml
+        soap_xml=st.session_state.current_soap_xml,
+        dx_chain_summary=dx_chain_summary
     )
     return engine.generate_raw_text(api_key, selected_model, config.MEDICAL_RECORD_SYSTEM_PROMPT, record_prompt)
 
 def run_engine_turn(api_key, selected_model, age, gender, medical_history, habits, user_input):
-    sys_prompt = config.get_system_prompt(mode="v3_engine")
-    
+    sys_prompt = config.get_system_prompt(mode="v4_engine")
+
+    # ===== 若上一輪已回報進入 Phase 2，本輪先跑鑑別診斷推演鏈（六階段），
+    #       鏈輸出（本輪、基於完整對話紀錄重新生成）餵給主引擎做 narrowing =====
+    prev_phase = st.session_state.get("parsed_dash", {}).get("current_phase", "")
+    dx_chain_text = ""
+    if "Phase 2" in prev_phase:
+        chain_result = run_dx_chain(api_key, selected_model, age, gender, medical_history, habits)
+        st.session_state.dx_chain_result = chain_result
+        dx_chain_text = format_dx_chain_output(chain_result)
+
     # 累積記憶完全由 rolling XML 承載；病患回覆已內含對應題目（問題 → 答案）
     forced_prompt = config.get_forced_template(
         age=age, gender=gender, medical_history=medical_history, habits=habits,
         previous_soap=st.session_state.current_soap_xml,
-        user_input=user_input
+        user_input=user_input,
+        dx_chain_output=dx_chain_text
     )
     
     raw_response = engine.generate_raw_text(api_key, selected_model, sys_prompt, forced_prompt)
@@ -92,16 +184,16 @@ def run_engine_turn(api_key, selected_model, age, gender, medical_history, habit
     dash = parsed_reply["parsed_dash"]
     st.session_state.form_round += 1
     
-    # ===== 攔截層 1：Phase 4 完成旗標 =====
+    # ===== 攔截層 1：問診完成旗標 =====
     if dash.get("consultation_complete"):
         st.session_state.locked = True
         st.session_state.current_questions = []
         _auto_generate_record(api_key, selected_model, age, gender, medical_history, habits)
         return LOCK_MESSAGE
     
-    # ===== 攔截層 2：守門員 Agent（僅於 Phase 3 / Phase 4 啟動，節省配額）=====
+    # ===== 攔截層 2：守門員 Agent（Phase 2 才會涉及鑑別診斷 narrowing，才有洩漏風險，於此啟動）=====
     current_phase = dash.get("current_phase", "")
-    if ("Phase 3" in current_phase or "Phase 4" in current_phase) and chat_text.strip():
+    if "Phase 2" in current_phase and chat_text.strip():
         if engine.run_diagnosis_guard(api_key, selected_model, chat_text):
             st.session_state.locked = True
             st.session_state.current_questions = []
@@ -220,6 +312,20 @@ def render_chat_history():
                     st.caption(f"⏱️ 本輪推演耗時 {msg['elapsed']:.1f} 秒")
 
 
+def render_dx_chain_panel():
+    """右側面板：顯示本輪鑑別診斷推演鏈的六階段輸出。"""
+    with st.expander("🔗 鑑別診斷推演鏈（六階段）", expanded=False):
+        chain = st.session_state.get("dx_chain_result", {})
+        if chain and any(chain.values()):
+            for key, label in DX_CHAIN_STAGES:
+                val = (chain.get(key) or "").strip()
+                if val:
+                    st.markdown(f"**{label}**")
+                    st.code(val, language="text")
+        else:
+            st.info("尚未啟動 — Phase 1 完成、進入 Phase 2 後，下一輪會自動執行。")
+
+
 def main():
     setup_page()
     
@@ -231,6 +337,7 @@ def main():
     if "medical_record" not in st.session_state: st.session_state.medical_record = ""
     if "current_questions" not in st.session_state: st.session_state.current_questions = []
     if "form_round" not in st.session_state: st.session_state.form_round = 0
+    if "dx_chain_result" not in st.session_state: st.session_state.dx_chain_result = {}
         
     (api_key, selected_model, age, gender, medical_history, habits, chief_complaint) = render_sidebar()
     
@@ -238,7 +345,7 @@ def main():
     
     with col_left:
         st.title("🩺 臨床動態問診工作區")
-        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v2.5")
+        st.caption("基於 Doubt-Driven 醫病動態認知博弈引擎 v4.0（含六階段鑑別診斷推演鏈）")
         st.divider()
         
         if not st.session_state.initialized:
@@ -275,7 +382,7 @@ def main():
             patient_reply = render_answer_form()
             if patient_reply:
                 st.session_state.messages.append({"role": "user", "content": patient_reply})
-                with st.spinner("四維度透視引擎掃描中..."):
+                with st.spinner("四維度透視引擎掃描中（Phase 2 起會先跑六階段鑑別診斷推演鏈）..."):
                     t0 = time.perf_counter()
                     try:
                         reply_text = run_engine_turn(
@@ -301,13 +408,14 @@ def main():
         st.markdown(f"**當前判定階段：** `{current_phase}`")
         
         with st.expander("內部推演原始碼 (Internal XML)", expanded=True):
-            # 【修復點】：改用 st.code() 並直接調用完整的 session_state.current_soap_xml
             raw_xml = st.session_state.get("current_soap_xml", "")
             if raw_xml.strip():
                 st.code(raw_xml, language="xml")
             else:
                 st.info("尚無推演資料")
-            
+
+        render_dx_chain_panel()
+
         st.divider()
         
         if st.session_state.initialized:
@@ -345,6 +453,7 @@ def main():
                 st.session_state.medical_record = ""
                 st.session_state.current_questions = []
                 st.session_state.form_round = 0
+                st.session_state.dx_chain_result = {}
                 st.rerun()
 
 if __name__ == "__main__":
